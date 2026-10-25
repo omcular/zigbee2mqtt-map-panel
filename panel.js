@@ -19,6 +19,8 @@ function loadD3() {
 const hideOk = (lq, v) => v <= -10 ? lq < -v : v >= 10 ? lq > v : true;
 const hideLabel = v => v <= -10 ? `≥ ${-v} hidden` : v >= 10 ? `≤ ${v} hidden` : 'off';
 const imgUrl = m => m ? `https://www.zigbee2mqtt.io/images/devices/${String(m).replace(/[/:\s]/g, '-')}.png` : null;
+const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const lqColor = v => v == null || v === 0 ? '#8a8f99' : v >= 80 ? 'var(--green)' : v >= 50 ? 'var(--orange)' : 'var(--red)';
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
@@ -71,17 +73,19 @@ const STYLE = `
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:380px; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; }
   svg:active { cursor:grabbing; }
+  svg.rotating { cursor:grabbing; }
+  #tip .big { font-size:22px; font-weight:600; line-height:1.1; margin-bottom:3px; }
   #canvas { position:relative; flex:1; height:calc(100% - var(--barh,44px)); }
   .link line.vis { stroke-linecap:round; pointer-events:none; }
   .link line.hit { stroke:transparent; stroke-width:6px; cursor:help; }
-  .link.dim, .node.dim, .lql.dim { opacity:0.3; }
+  .link.dim, .lql.dim { opacity:0.3; }
+  .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }   /* the disc behind the image stays opaque so the link gap survives */
   .lql { font-size:9px; fill:var(--primary-text-color,#c7cdd8); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node.end text { font-size:9.5px; fill:var(--muted); }
   .node .shape, .node .ring { cursor:move; }
   .node image.img { cursor:move; }
   .node circle.imgbg { fill:var(--bgc); cursor:move; }
-  g.imgs .node:not(.end) text { transform:translateY(6px); }
   .node .halo { fill:var(--yellow); fill-opacity:0; }
   .node.pinned .halo { fill-opacity:0.22; }
   .node.pinned .shape { stroke:var(--primary-text-color,#fff); }
@@ -101,6 +105,7 @@ const BAR = `
     <label><input type="checkbox" id="showEnd"> end devices</label>
     <label><input type="checkbox" id="showOne"> one-sided / stale links</label>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg"> show device images</label>
+    <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
     <label><input type="checkbox" id="showNames" checked> show device names</label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
     <label title="also read every router's routing table on a pull (slower: +15 s per router that does not answer)"><input type="checkbox" id="routes"> routes on pull</label>
@@ -118,7 +123,8 @@ const BAR = `
   <details id="help" class="dd"><summary>help ▾</summary><div class="menu">
     <h4>Mouse</h4>
     <dl>
-      <dt>drag background · wheel</dt><dd>pan · zoom</dd>
+      <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
+      <dt><kbd>Ctrl</kbd>-drag · middle-drag</dt><dd>rotate the whole map around the centre of the view; positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
       <dt>click node · click background</dt><dd>show that node with ALL its links, even the ones the hide slider or the one-sided filter would hide, and fade the rest · back to normal</dd>
@@ -129,7 +135,7 @@ const BAR = `
       <dt>a / b on a link</dt><dd>what the left-hand node hears from the right-hand one / what the right-hand node hears. LQI 0–255, higher is better: <span style="color:var(--green)">≥ 80</span>, <span style="color:var(--orange)">50–79</span>, <span style="color:var(--red)">&lt; 50</span>. Colour and width follow the weaker direction</dd>
       <dt>dashed grey</dt><dd>only one side reported the link, or reported 0: usually a stale neighbour-table entry (hidden unless "one-sided / stale links" is on)</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI → length" in options sets how much; "spring" scales everything)</dd>
-      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "show device images" in options puts the zigbee2mqtt.io photo on each node (needs internet; the PNG export leaves them out)</dd>
+      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "show device images" in options puts the zigbee2mqtt.io photo on each node, "image size" scales them (needs internet; the PNG export leaves them out)</dd>
       <dt>what a link is</dt><dd>an entry in a router's neighbour table, not a live route. These tables hold ~16 entries and age in and out, so links come and go between scans; judge a path over several scans</dd>
     </dl>
     <h4>Data</h4>
@@ -274,8 +280,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.data = { nodes, links, byId, fetchedAt };
     this.selected = null;
     const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator').length, ends = nodes.filter(n => n.isEnd).length;
-    const weak = links.filter(l => !l.oneSided && l.min < 50 && !l.s.isEnd && !l.t.isEnd).length;
-    this.$('status').textContent = `map ${new Date(fetchedAt).toLocaleString()} · ${routers} routers, ${ends} end devices, ${links.length} links · ${weak} router links < 50`;
+    this.$('status').textContent = `map ${new Date(fetchedAt).toLocaleString()} · ${routers} routers, ${ends} end devices, ${links.length} links`;
     if (!(seeded > 0)) this.warm = false;
     this.render();
   }
@@ -284,10 +289,24 @@ class ZigbeeMapPanel extends HTMLElement {
     const r = this.shadowRoot, $ = this.$;
     this.svg = d3.select(r.querySelector('svg')); this.tip = d3.select($('tip'));
     this.g = this.svg.append('g'); this.gl = this.g.append('g'); this.glq = this.g.append('g'); this.gn = this.g.append('g');
-    this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { this._zoomT = e.transform; this.g.attr('transform', e.transform); }).on('end', () => this.saveView()).filter(e => !e.target.closest?.('.node') && !e.button);
+    // Ctrl is excluded on purpose: Ctrl-wheel stays browser zoom, Ctrl-drag rotates (below); middle button rotates too
+    this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { this._zoomT = e.transform; this.g.attr('transform', e.transform); }).on('end', () => this.saveView()).filter(e => !e.target.closest?.('.node') && !e.button && !e.ctrlKey);
     this.svg.call(this.zoom);
+    const svgEl = this.svg.node();
+    svgEl.addEventListener('mousedown', e => {
+      if (!this.data || e.target.closest?.('.node') || !(e.button === 1 || (e.button === 0 && e.ctrlKey))) return;
+      e.preventDefault(); e.stopPropagation();
+      const c = $('canvas').getBoundingClientRect(), cx = c.left + c.width / 2, cy = c.top + c.height / 2;
+      const centre = d3.zoomTransform(svgEl).invert([c.width / 2, c.height / 2]);   // centre of the view, in graph coordinates
+      let a0 = Math.atan2(e.clientY - cy, e.clientX - cx), turned = false;
+      svgEl.classList.add('rotating');
+      const move = ev => { const a1 = Math.atan2(ev.clientY - cy, ev.clientX - cx); if (a1 !== a0) { this.rotateAll(a1 - a0, centre); a0 = a1; turned = true; } };
+      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); svgEl.classList.remove('rotating'); if (turned) { this._rotated = true; this.savePos(); } };
+      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+    });
+    svgEl.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
     const v = lsGet(LS.view, null); if (v && v.k > 0) this.svg.call(this.zoom.transform, d3.zoomIdentity.translate(v.x, v.y).scale(v.k));
-    this.svg.on('click', () => { if (this.selected) { this.selected = null; this._selOnly = true; this.render(); } else this.applySel(); });
+    this.svg.on('click', () => { if (this._rotated) { this._rotated = false; return; } if (this.selected) { this.selected = null; this._selOnly = true; this.render(); } else this.applySel(); });
     this.spring = +lsGet(LS.spring, 1) || 1;
     // rest length follows link quality (weaker direction): LQI 255 -> short, LQI 0 / one-sided -> long
     const q = l => (l.oneSided || !(l.min >= 0) || l.min > 255) ? 0 : l.min / 255;
@@ -299,16 +318,18 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
       .on('tick', () => { this.draw(); this.savePosSoon(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spring / LQI→length / pin mode have their own keys
-    const PREFS = ['showEnd', 'showOne', 'showLql', 'showNames', 'showImg', 'routes', 'hide'];
+    const PREFS = ['showEnd', 'showOne', 'showLql', 'showNames', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
     $('hideV').textContent = hideLabel(+$('hide').value);
+    this.imgsize = +$('imgsize').value || 30; $('imgsizeV').textContent = this.imgsize;
+    $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); };
     const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
     $('showEnd').onchange = () => this.render(); $('showOne').onchange = () => this.render();
     $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
     $('showNames').onchange = () => this.gn.selectAll('g.node text').style('display', $('showNames').checked ? null : 'none');
-    $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); };
+    $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); };
     this.gn.classed('imgs', $('showImg').checked);
     $('hide').oninput = () => { $('hideV').textContent = hideLabel(+$('hide').value); this.render(); };
     $('spring').value = this.spring; $('springV').textContent = this.spring.toFixed(1);
@@ -329,6 +350,17 @@ class ZigbeeMapPanel extends HTMLElement {
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }
       this.build();   // rebuilds the bar and the graph with defaults; the cached map is re-read from storage
     };
+  }
+  // turn every node (positions, pins and velocities) by da radians around a point in graph coordinates
+  rotateAll(da, [ox, oy]) {
+    const c = Math.cos(da), s = Math.sin(da);
+    for (const n of this.data.nodes) {
+      if (n.x == null) continue;
+      const dx = n.x - ox, dy = n.y - oy; n.x = ox + dx * c - dy * s; n.y = oy + dx * s + dy * c;
+      if (n.fx != null) { const fx = n.fx - ox, fy = n.fy - oy; n.fx = ox + fx * c - fy * s; n.fy = oy + fx * s + fy * c; }
+      if (n.vx) { const vx = n.vx, vy = n.vy || 0; n.vx = vx * c - vy * s; n.vy = vx * s + vy * c; }
+    }
+    this.draw();
   }
   // graph state: every node's last position (pinned ones flagged) + the zoom/pan view, so a revisit starts where you left off
   savePos() { const o = {}; if (this.data) for (const n of this.data.nodes) if (n.x != null) o[n.id] = [Math.round(n.x), Math.round(n.y), n.fx != null ? 1 : 0]; lsSet(LS.pos, o); }
@@ -354,6 +386,8 @@ class ZigbeeMapPanel extends HTMLElement {
     const color = l => l.oneSided ? '#8a8f99' : l.min >= 80 ? 'var(--green)' : l.min >= 50 ? 'var(--orange)' : 'var(--red)';
     const width = l => l.oneSided ? 1 : l.endLink ? 1.2 : 1 + 2.5 * Math.min(l.min, 200) / 200;
     const fmt = v => v == null ? '–' : v, key = l => l.s.id + '|' + l.t.id;
+    // routing-table entries, identical ones collapsed (tables often hold a dozen inactive entries for one destination)
+    const routesText = rs => { const c = {}; for (const r of rs) { const k = `${byId[r.via]?.name ?? r.via} → nwk ${r.to} ${r.status}`; c[k] = (c[k] || 0) + 1; } return Object.entries(c).map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join('; '); };
     // each link = a group with the visible line and a wide invisible "hit" line for hovering
     const link = this.gl.selectAll('g.link').data(links, key); link.exit().remove();
     const le = link.enter().append('g').attr('class', 'link');
@@ -361,14 +395,15 @@ class ZigbeeMapPanel extends HTMLElement {
     const lm = le.merge(link);
     lm.select('line.vis').attr('stroke', color).attr('stroke-width', width).attr('stroke-dasharray', l => l.oneSided ? '4 4' : null);
     lm.select('line.hit')
-      .on('mouseenter', (e, l) => this.showTip(e, `${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})` + (l.routes.length ? `\nroutes: ${l.routes.map(r => `${byId[r.via]?.name ?? r.via} → nwk ${r.to} ${r.status}`).join('; ')}` : '')))
+      .on('mouseenter', (e, l) => this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
+        esc(`${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})` + (l.routes.length ? `\nroutes: ${routesText(l.routes)}` : '')), true))
       .on('mousemove', e => this.moveTip(e)).on('mouseleave', () => this.hideTip());
     const lql = this.glq.selectAll('text').data(links, key); lql.exit().remove();
     lql.enter().append('text').attr('class', 'lql').attr('text-anchor', 'middle').merge(lql).text(l => `${fmt(l.lqS)} / ${fmt(l.lqT)}`).style('display', $('showLql').checked ? null : 'none');
     const node = this.gn.selectAll('g.node').data(nodes, n => n.id); node.exit().remove();
     const ne = node.enter().append('g').attr('class', 'node').call(d3.drag()
       .on('start', (e, d) => { d._moved = false; d._wasPinned = d.fx != null; d.fx = d.x; d.fy = d.y; })
-      .on('drag', (e, d) => { if (!d._moved) { d._moved = true; if (!e.active) self.sim.alphaTarget(0.25).restart(); } d.fx = e.x; d.fy = e.y; })
+      .on('drag', (e, d) => { if (!d._moved) { d._moved = true; self.sim.alphaTarget(0.25).restart(); } d.fx = e.x; d.fy = e.y; })
       .on('end', (e, d) => {
         if (!d._moved) { if (!d._wasPinned) { d.fx = d.fy = null; } return; }   // plain click: nothing moved, nothing heats
         if (!e.active) self.sim.alphaTarget(0);
@@ -391,11 +426,11 @@ class ZigbeeMapPanel extends HTMLElement {
     const withImg = ne.filter(d => d.type !== 'Coordinator' && imgUrl(d.model));
     withImg.append('circle').attr('class', 'imgbg').attr('r', d => d.isEnd ? 14 : 21).style('display', $('showImg').checked ? null : 'none');
     withImg.append('image').attr('class', 'img')
-      .attr('href', d => imgUrl(d.model)).attr('width', d => d.isEnd ? 20 : 30).attr('height', d => d.isEnd ? 20 : 30).attr('x', d => d.isEnd ? -10 : -15).attr('y', d => d.isEnd ? -10 : -15)
-      .attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
-      .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); });
+      .attr('href', d => imgUrl(d.model)).attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
+      .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); });
     ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').text(d => d.name).style('display', $('showNames').checked ? null : 'none');
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
+    this.applyImgSize();
     // weak gravity toward the canvas centre so nodes that lose all visible links do not fly off; stronger for isolated ones
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
     const cv = $('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2, grav = d => deg[d.id] ? 0.03 : 0.15;
@@ -407,6 +442,18 @@ class ZigbeeMapPanel extends HTMLElement {
     else this.sim.alpha(this._gentle ? 0.15 : 0.5).restart();
     this._selOnly = false; this._gentle = false;
     this.applySel();
+  }
+  // image, backing disc, label offset and collision radius follow the image-size slider
+  applyImgSize() {
+    if (!this.gn) return;
+    const on = this.$('showImg').checked, S0 = this.imgsize || 30;
+    this.gn.selectAll('g.node').each(function (d) {
+      const S = d.isEnd ? Math.round(S0 * 0.67) : S0, r = S / 2 + 6, g = d3.select(this), has = !!this.querySelector('image.img');
+      g.select('image.img').attr('width', S).attr('height', S).attr('x', -S / 2).attr('y', -S / 2);
+      g.select('circle.imgbg').attr('r', r);
+      g.select('text').attr('dy', has && on ? r + 11 : d.isEnd ? 14 : 22);
+    });
+    this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18, on ? S0 * 0.33 + 10 : 0) : Math.max(42, on ? S0 / 2 + 14 : 0));
   }
   draw() {
     this.gl.selectAll('g.link').each(function (l) { for (const ln of this.children) { ln.setAttribute('x1', l.source.x); ln.setAttribute('y1', l.source.y); ln.setAttribute('x2', l.target.x); ln.setAttribute('y2', l.target.y); } });
@@ -425,7 +472,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.gl.selectAll('g.link').classed('dim', l => !linkOn(l));
     this.glq.selectAll('text').classed('dim', l => !linkOn(l));
   }
-  showTip(e, text) { this.tip.style('display', 'block').text(text); this.moveTip(e); }
+  showTip(e, text, html = false) { const t = this.tip.style('display', 'block'); if (html) t.html(text); else t.text(text); this.moveTip(e); }
   moveTip(e) { const c = this.$('canvas').getBoundingClientRect(); this.tip.style('left', Math.min(e.clientX - c.left + 14, c.width - 400) + 'px').style('top', (e.clientY - c.top + 14) + 'px'); }
   hideTip() { this.tip.style('display', 'none'); }
   savePng() {
