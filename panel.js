@@ -120,8 +120,8 @@ const BAR = `
     <label title="while this panel is open and visible it requests a scan at this interval (input_number.zigbee_map_live_interval). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
     <label title="use the networkmap_fast external extension (2 routers at a time, the measured sweet spot here) instead of Zigbee2MQTT's one-by-one scan; needs the extension loaded in Z2M"><input type="checkbox" id="fastScan"> parallel scan (extension)</label>
     <div id="schedNote" class="note"></div>
-    <label>spring <input type="range" id="spring" min="0.3" max="3" value="1" step="0.05"> <span id="springV">1.0</span></label>
-    <label title="0: all links the same length · 1: strong links short, weak links long · 1.5: exaggerated">LQI → length <input type="range" id="lqilen" min="0" max="1.5" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
+    <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="1" step="0.05"> <span id="springV">1.0</span></label>
+    <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
     <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> drag pins nodes</label>
     <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview">reset view</button><button id="png">save PNG</button></div>
     <div class="row"><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept)">reset to defaults</button></div>
@@ -141,7 +141,7 @@ const BAR = `
       <dt>a / b on a link</dt><dd>what the left-hand node hears from the right-hand one / what the right-hand node hears. LQI 0–255, higher is better: <span style="color:var(--green)">≥ 80</span>, <span style="color:var(--orange)">50–79</span>, <span style="color:var(--red)">&lt; 50</span>. Colour and width follow the weaker direction</dd>
       <dt>dashed grey</dt><dd>only one side reported the link, or reported 0: usually a stale neighbour-table entry (hidden unless "one-sided / stale links" is on)</dd>
       <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
-      <dt>link length</dt><dd>strong links short, weak links long ("LQI → length" in options sets how much; "spring" scales everything)</dd>
+      <dt>link length</dt><dd>strong links short, weak links long ("LQI contrast" in options sets how much; "spacing" scales all distances)</dd>
       <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "show device images" in options puts the zigbee2mqtt.io photo on each node, "image size" scales them (needs internet; the PNG export leaves them out)</dd>
       <dt>what a link is</dt><dd>an entry in a router's neighbour table, not a live route. These tables hold ~16 entries and age in and out, so links come and go between scans; judge a path over several scans</dd>
     </dl>
@@ -315,17 +315,17 @@ class ZigbeeMapPanel extends HTMLElement {
     svgEl.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
     const v = lsGet(LS.view, null); if (v && v.k > 0) this.svg.call(this.zoom.transform, d3.zoomIdentity.translate(v.x, v.y).scale(v.k));
     this.svg.on('click', () => { if (this._rotated) { this._rotated = false; return; } if (this.selected) { this.selected = null; this._selOnly = true; this.render(); } else this.applySel(); });
-    this.spring = +lsGet(LS.spring, 1) || 1;
+    this.spring = Math.min(2, +lsGet(LS.spring, 1) || 1);
     // rest length follows link quality (weaker direction): LQI 255 -> short, LQI 0 / one-sided -> long
     const q = l => (l.oneSided || !(l.min >= 0) || l.min > 255) ? 0 : l.min / 255;
-    this.lqilen = +lsGet(LS.lqilen, 1); if (!(this.lqilen >= 0)) this.lqilen = 1;
-    // k = 0: fixed lengths (210 / 60) · k = 1: 120..300 / 40..100 by LQI · in between: linear blend
-    const dist = l => { const k = this.lqilen; return ((l.s.isEnd || l.t.isEnd) ? ((60 - 20 * k) + 60 * k * (1 - q(l))) : ((210 - 90 * k) + 180 * k * (1 - q(l)))) * this.spring; };
+    this.lqilen = Math.min(3, +lsGet(LS.lqilen, 1)); if (!(this.lqilen >= 0)) this.lqilen = 1;
+    // k = 0: fixed lengths (210 / 60) · k = 1: 120..300 / 40..100 by LQI · linear in k, floored so strong links never collapse at high contrast
+    const dist = l => { const k = this.lqilen, end = l.s.isEnd || l.t.isEnd; return Math.max(end ? 25 : 50, end ? ((60 - 20 * k) + 60 * k * (1 - q(l))) : ((210 - 90 * k) + 180 * k * (1 - q(l)))) * this.spring; };
     const charge = d => (d.isEnd ? -150 : -1100) * this.spring;
     this.sim = d3.forceSimulation().force('link', d3.forceLink().id(d => d.id).distance(dist).strength(l => l.revealed ? 0 : l.oneSided ? 0.15 : 0.5))
       .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
       .on('tick', () => { this.draw(); this.savePosSoon(); }).on('end', () => this.savePos());
-    // remembered controls (this browser): checkboxes and the hide slider; spring / LQI→length / pin mode have their own keys
+    // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
     const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
