@@ -91,13 +91,13 @@ const STYLE = `
   .link line.vis { stroke-linecap:round; pointer-events:none; }
   .link line.hit { stroke:transparent; stroke-width:6px; cursor:help; }
   .link.dim, .lql.dim { opacity:0.3; }
-  .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }   /* the disc behind the image stays opaque so the link gap survives */
+  .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
   .lql { font-size:9px; fill:var(--primary-text-color,#c7cdd8); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node.end text { font-size:9.5px; fill:var(--muted); }
   .node .shape, .node .ring { cursor:move; }
   .node image.img { cursor:move; }
-  .node circle.imgbg { fill:var(--bgc); cursor:move; }
+  .node circle.imgbg { fill:transparent; cursor:move; }   /* hit area + selection/pin ring only; own links stop at the rim (see draw) */
   .node .halo { fill:var(--yellow); fill-opacity:0; }
   .node.pinned .halo { fill-opacity:0.22; }
   .node.pinned .shape { stroke:var(--primary-text-color,#fff); }
@@ -344,7 +344,7 @@ class ZigbeeMapPanel extends HTMLElement {
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
     $('hideV').textContent = hideLabel(+$('hide').value);
     this.imgsize = +$('imgsize').value || 30; $('imgsizeV').textContent = this.imgsize;
-    $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); };
+    $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); this.draw(); };
     const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
     $('showEnd').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
@@ -352,7 +352,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const applySmooth = () => { smoothColours = $('smooth').checked; $('legend').innerHTML = legendHtml(smoothColours); this.gl?.selectAll('g.link line.vis').attr('stroke', l => l.oneSided ? LQ.grey : lqColor(l.min)); };
     $('smooth').onchange = applySmooth; applySmooth();
     $('names').onchange = () => this.applyNames();
-    $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); };
+    $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
     $('hide').oninput = () => { $('hideV').textContent = hideLabel(+$('hide').value); this.render(); };
     $('spring').value = this.spring; $('springV').textContent = this.spring.toFixed(1);
@@ -450,7 +450,7 @@ class ZigbeeMapPanel extends HTMLElement {
     withImg.append('circle').attr('class', 'imgbg').attr('r', d => d.isEnd ? 14 : 21).style('display', $('showImg').checked ? null : 'none');
     withImg.append('image').attr('class', 'img')
       .attr('href', d => imgUrl(d.model)).attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
-      .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); });
+      .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); g.__data__._r = g.__data__.isEnd ? 7 : 12; });
     ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').text(d => d.name);
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
     this.applyImgSize(); this.applyNames();
@@ -475,6 +475,7 @@ class ZigbeeMapPanel extends HTMLElement {
       g.select('image.img').attr('width', S).attr('height', S).attr('x', -S / 2).attr('y', -S / 2);
       g.select('circle.imgbg').attr('r', r);
       g.select('text').attr('dy', has && on ? r + 11 : d.isEnd ? 14 : 22);
+      d._r = has && on ? r + 1 : d.type === 'Coordinator' ? 14 : d.isEnd ? 7 : 12;   // where this node's own links end
     });
     this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18, on ? S0 * 0.33 + 10 : 0) : Math.max(42, on ? S0 / 2 + 14 : 0));
   }
@@ -498,7 +499,13 @@ class ZigbeeMapPanel extends HTMLElement {
     this.gn?.selectAll('g.node text').style('display', d => mode === 'all' || (mode === 'routers' && !d.isEnd) ? null : 'none');
   }
   draw() {
-    this.gl.selectAll('g.link').each(function (l) { for (const ln of this.children) { ln.setAttribute('x1', l.source.x); ln.setAttribute('y1', l.source.y); ln.setAttribute('x2', l.target.x); ln.setAttribute('y2', l.target.y); } });
+    // each link runs from rim to rim of its own two nodes (gap = node radius), so a link passing under a third node is not cut
+    this.gl.selectAll('g.link').each(function (l) {
+      const s = l.source, t = l.target, dx = t.x - s.x, dy = t.y - s.y, len = Math.hypot(dx, dy) || 1, rs = s._r ?? 10, rt = t._r ?? 10;
+      let x1 = s.x, y1 = s.y, x2 = t.x, y2 = t.y;
+      if (len > rs + rt + 4) { const ux = dx / len, uy = dy / len; x1 += ux * rs; y1 += uy * rs; x2 -= ux * rt; y2 -= uy * rt; } else { x2 = x1; y2 = y1; }
+      for (const ln of this.children) { ln.setAttribute('x1', x1); ln.setAttribute('y1', y1); ln.setAttribute('x2', x2); ln.setAttribute('y2', y2); }
+    });
     this.glq.selectAll('text').attr('x', l => (l.source.x + l.target.x) / 2).attr('y', l => (l.source.y + l.target.y) / 2 - 3);
     this.gn.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`).classed('pinned', d => d.fx != null);
   }
