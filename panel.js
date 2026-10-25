@@ -14,10 +14,12 @@ function loadD3() {
   d3Ready ??= new Promise((res, rej) => { const s = document.createElement('script'); s.src = BASE + 'd3.v7.min.js'; s.onload = () => res(window.d3); s.onerror = () => rej(new Error('d3 failed to load from ' + s.src)); document.head.appendChild(s); });
   return d3Ready;
 }
-// one slider, middle = show all. Left (v < 0): hide GOOD links, i.e. keep only LQI < |v| (find the bad ones).
-// Right (v > 0): hide BAD links, i.e. keep only LQI > v (clean picture). Dead zone around 0.
-const hideOk = (lq, v) => v <= -10 ? lq < -v : v >= 10 ? lq > v : true;
-const hideLabel = v => v <= -10 ? `≥ ${-v} hidden` : v >= 10 ? `≤ ${v} hidden` : 'off';
+// one slider, middle = show all, both directions progressive from the middle. Right (v > 0): hide BAD links, keep
+// LQI > v (first step hides ≤ 10, far right hides ≤ 255). Left (v < 0): hide GOOD links, keep LQI < T with
+// T = 265 + v (first step hides ≥ 255, far left hides ≥ 10), to find the bad ones. Dead zone around 0.
+const hideT = v => 265 + v;
+const hideOk = (lq, v) => v <= -10 ? lq < hideT(v) : v >= 10 ? lq > v : true;
+const hideLabel = v => v <= -10 ? `≥ ${hideT(v)} hidden` : v >= 10 ? `≤ ${v} hidden` : 'off';
 const imgUrl = m => m ? `https://www.zigbee2mqtt.io/images/devices/${String(m).replace(/[/:\s]/g, '-')}.png` : null;
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const lqColor = v => v == null || v === 0 ? '#8a8f99' : v >= 80 ? 'var(--green)' : v >= 50 ? 'var(--orange)' : 'var(--red)';
