@@ -111,7 +111,7 @@ const BAR = `
     <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
     <label><input type="checkbox" id="showNames" checked> show device names</label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
-    <label title="also read every router's routing table on a pull (slower: +15 s per router that does not answer)"><input type="checkbox" id="routes"> routes on pull</label>
+    <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> routes on pull</label>
     <div class="sep"></div>
     <label title="Home Assistant scans on its own at this interval, whether anyone is looking or not (input_number.zigbee_map_scan_interval). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
     <label title="while this panel is open and visible it requests a scan at this interval (input_number.zigbee_map_live_interval). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
@@ -146,7 +146,7 @@ const BAR = `
     <dl>
       <dt>background scan</dt><dd>Home Assistant asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule through the last-request time kept in HA</dd>
-      <dt>pull fresh map</dt><dd>starts a scan now; every router that does not answer costs about 15 s. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" sends the request to the networkmap_fast extension's own topic (2 routers at a time; more loses routers behind weak links). With the extension's default config the normal topic is served by it too, so the toggle only matters if that takeover is off</dd>
+      <dt>pull fresh map</dt><dd>starts a scan now. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" sends the request to the networkmap_fast extension's own topic (2 routers at a time; more loses routers behind weak links). With the extension's default config the normal topic is served by it too, so the toggle only matters if that takeover is off</dd>
       <dt>hide slider</dt><dd>middle shows all · left hides good links (keep only LQI below n, to find the bad ones) · right hides bad links</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
@@ -238,7 +238,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const kind = this.fast ? 'networkmap_fast' : 'networkmap';
     btn.disabled = true; st.textContent = `requesting ${kind} on ${this.baseTopic}…`;
     const t0 = Date.now(); let unsub = null, progSub = null, progress = '';
-    const tick = setInterval(() => { st.textContent = `${auto ? 'viewing scan' : 'scan'} running… ${Math.round((Date.now() - t0) / 1000)} s${progress} (each router that does not answer costs 15 s; leaving the page is fine, the result is kept by HA)`; }, 1000);
+    const tick = setInterval(() => { st.textContent = `${auto ? 'viewing scan' : 'scan'} running… ${Math.round((Date.now() - t0) / 1000)} s${progress} (leaving the page is fine, the result is kept by HA)`; }, 1000);
     const done = () => { clearInterval(tick); clearTimeout(to); btn.disabled = false; this._pulling = null; for (const u of [unsub, progSub]) if (u) { try { u(); } catch (e) {} } unsub = progSub = null; };
     const to = setTimeout(() => { done(); st.textContent = 'timeout: no response in 10 min (Z2M busy? base topic right? the background scan will still land here when it finishes)'; }, 600000);
     this._pulling = done;   // the retained store topic may deliver the result first
