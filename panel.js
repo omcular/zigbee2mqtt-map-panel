@@ -336,7 +336,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const charge = d => (d.isEnd ? -150 : -1100) * this.spring;
     this.sim = d3.forceSimulation().force('link', d3.forceLink().id(d => d.id).distance(dist).strength(l => l.revealed ? 0 : l.oneSided ? 0.15 : 0.5))
       .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
-      .on('tick', () => { this.draw(); this.savePosSoon(); }).on('end', () => this.savePos());
+      .on('tick', () => { this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
     const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'smooth', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
@@ -455,9 +455,10 @@ class ZigbeeMapPanel extends HTMLElement {
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
     this.applyImgSize(); this.applyNames();
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
-    this._deg = deg; this.applyGravity();
+    this._deg = deg;
     const cv = $('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2;
     this.sim.nodes(nodes); this.sim.force('link').links(links);
+    this.applyGravity();
     for (const n of nodes) if (n.x == null) { n.x = cx + (Math.random() - 0.5) * 80; n.y = cy + (Math.random() - 0.5) * 80; }
     if (!this.warm) { this.warm = true; this.sim.force('center', d3.forceCenter(cx, cy)); this.sim.alpha(1); for (let i = 0; i < 250; i++) this.sim.tick(); }
     if (this._selOnly) { for (const l of links) { l.source = l.s; l.target = l.t; } this.draw(); }   // selection: redraw in place, no physics
@@ -480,10 +481,14 @@ class ZigbeeMapPanel extends HTMLElement {
   // weak gravity toward the canvas centre so nodes that lose all visible links do not fly off. Nodes WITHOUT any visible
   // link are parked in a strip near the bottom instead: at the centre they sit on top of other nodes' links and look connected
   applyGravity() {
-    if (!this.sim || !this._deg) return;
+    if (!this.sim || !this._deg || !this.data) return;
     const cv = this.$('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2, deg = this._deg, iso = d => !deg[d.id];
-    this.sim.force('x', d3.forceX(cx).strength(d => iso(d) ? 0.06 : 0.03))
-      .force('y', d3.forceY(d => iso(d) ? cy + cv.clientHeight * 0.42 : cy).strength(d => iso(d) ? 0.2 : 0.03));
+    // the strip sits below the lowest linked node (graph coordinates: the layout is usually larger than the canvas)
+    const linked = this.sim.nodes().filter(d => !iso(d) && d.y != null);
+    const parkY = linked.length ? Math.max(...linked.map(d => d.y)) + 110 : cy + cv.clientHeight * 0.42;
+    const parkX = linked.length ? linked.reduce((a, d) => a + d.x, 0) / linked.length : cx;
+    this.sim.force('x', d3.forceX(d => iso(d) ? parkX : cx).strength(d => iso(d) ? 0.05 : 0.03))
+      .force('y', d3.forceY(d => iso(d) ? parkY : cy).strength(d => iso(d) ? 0.25 : 0.03));
   }
   // constant width: colour alone carries the LQI; one-sided links are hairlines
   linkWidth(l) { return l.oneSided ? 0.8 : 3; }
