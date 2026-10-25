@@ -281,7 +281,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const old = this.data ? Object.fromEntries(this.data.nodes.map(n => [n.id, n])) : {};
     for (const n of nodes) {
       n.isEnd = n.type === 'EndDevice' || n.type === 'Unknown';
-      n.stale = n.lastSeen && (now - n.lastSeen) > 86400e3;
+      n.stale = n.type !== 'Coordinator' && n.lastSeen && (now - n.lastSeen) > 86400e3;   // the coordinator has no meaningful last-seen
       const o = old[n.id], sv = saved[n.id];
       if (o) { n.x = o.x; n.y = o.y; n.fx = o.fx; n.fy = o.fy; }
       else if (sv) { n.x = sv[0]; n.y = sv[1]; if (sv[2]) { n.fx = sv[0]; n.fy = sv[1]; } seeded++; }
