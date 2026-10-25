@@ -136,7 +136,7 @@ const BAR = `
     <dl>
       <dt>background scan</dt><dd>Home Assistant asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule through the last-request time kept in HA</dd>
-      <dt>pull fresh map</dt><dd>starts a scan now; every router that does not answer costs about 15 s. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" uses the networkmap_fast extension in Zigbee2MQTT, 2 routers at a time (more loses routers behind weak links), with a progress count</dd>
+      <dt>pull fresh map</dt><dd>starts a scan now; every router that does not answer costs about 15 s. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" sends the request to the networkmap_fast extension's own topic (2 routers at a time; more loses routers behind weak links). With the extension's default config the normal topic is served by it too, so the toggle only matters if that takeover is off</dd>
       <dt>hide slider</dt><dd>middle shows all · left hides good links (keep only LQI below n, to find the bad ones) · right hides bad links</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
@@ -233,10 +233,9 @@ class ZigbeeMapPanel extends HTMLElement {
     const to = setTimeout(() => { done(); st.textContent = 'timeout: no response in 10 min (Z2M busy? base topic right? the background scan will still land here when it finishes)'; }, 600000);
     this._pulling = done;   // the retained store topic may deliver the result first
     try {
-      if (this.fast) {
-        progSub = await h.connection.subscribeMessage(msg => { try { const p = JSON.parse(msg.payload); progress = ` · ${p.done}/${p.total} routers${p.failed ? `, ${p.failed} not answering` : ''}`; } catch (e) {} },
-          { type: 'mqtt/subscribe', topic: `${this.baseTopic}/bridge/response/networkmap_fast/progress` });
-      }
+      // progress comes from the networkmap_fast extension; with its default config it also answers the normal topic, so always listen
+      progSub = await h.connection.subscribeMessage(msg => { try { const p = JSON.parse(msg.payload); progress = ` · ${p.done}/${p.total} routers${p.failed ? `, ${p.failed} not answering` : ''}`; } catch (e) {} },
+        { type: 'mqtt/subscribe', topic: `${this.baseTopic}/bridge/response/networkmap_fast/progress` });
       unsub = await h.connection.subscribeMessage(msg => {
         let r; try { r = JSON.parse(msg.payload); } catch (e) { return; }
         if (r.status !== 'ok') { done(); st.textContent = 'Z2M error: ' + (r.error || 'unknown'); return; }
