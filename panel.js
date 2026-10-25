@@ -95,6 +95,7 @@ const STYLE = `
   .node .shape, .node .ring { cursor:move; }
   .node image.img { cursor:move; }
   .node circle.imgbg { fill:transparent; cursor:move; }   /* hit area + selection/pin ring only; own links stop at the rim (see draw) */
+  g.imgs .node.hasimg .shape { display:none; }           /* the generic square/dot would show behind a small photo */
   .node .halo { fill:var(--yellow); fill-opacity:0; }
   .node.pinned .halo { fill-opacity:0.22; }
   .node.pinned .shape { stroke:var(--primary-text-color,#fff); }
@@ -444,11 +445,11 @@ class ZigbeeMapPanel extends HTMLElement {
       else if (d.isEnd) s.append('circle').attr('class', 'shape').attr('r', 4).attr('fill', '#9aa3b2').attr('stroke', '#000');
       else s.append('rect').attr('class', 'shape').attr('x', -8).attr('y', -8).attr('width', 16).attr('height', 16).attr('rx', 3).attr('fill', 'var(--blue)').attr('stroke', '#000');
     });
-    const withImg = ne.filter(d => d.type !== 'Coordinator' && imgUrl(d.model));
+    const withImg = ne.filter(d => d.type !== 'Coordinator' && imgUrl(d.model)).classed('hasimg', true);
     withImg.append('circle').attr('class', 'imgbg').attr('r', d => d.isEnd ? 14 : 21).style('display', $('showImg').checked ? null : 'none');
     withImg.append('image').attr('class', 'img')
       .attr('href', d => imgUrl(d.model)).attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
-      .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); g.__data__._r = g.__data__.isEnd ? 7 : 12; });
+      .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); g.classList.remove('hasimg'); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); g.__data__._r = g.__data__.isEnd ? 7 : 12; });
     ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').text(d => d.name);
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
     this.applyImgSize(); this.applyNames();
