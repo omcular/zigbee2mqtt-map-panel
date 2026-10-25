@@ -60,6 +60,7 @@ const STYLE = `
   details.dd .menu .row { display:flex; gap:6px; flex-wrap:wrap; }
   details.dd .menu .sep { border-top:1px solid var(--divider-color,#444); margin:2px 0; }
   details.dd .menu .note { color:var(--muted); font-size:11px; }
+  details.dd .menu select { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:2px 4px; }
   details.dd .menu input[type=number] { width:64px; background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:2px 4px; }
   details#help .menu { min-width:min(560px, calc(100vw - 40px)); gap:6px; font-size:12px; line-height:1.45; }
   details#help h4 { margin:4px 0 0; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
@@ -109,7 +110,7 @@ const BAR = `
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg"> show device images</label>
     <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
-    <label><input type="checkbox" id="showNames" checked> show device names</label>
+    <label>show names for <select id="names"><option value="none">none</option><option value="routers">routers only</option><option value="all" selected>all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
     <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> routes on pull</label>
     <div class="sep"></div>
@@ -323,17 +324,18 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
       .on('tick', () => { this.draw(); this.savePosSoon(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spring / LQI→length / pin mode have their own keys
-    const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'showNames', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
+    if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
     $('hideV').textContent = hideLabel(+$('hide').value);
     this.imgsize = +$('imgsize').value || 30; $('imgsizeV').textContent = this.imgsize;
     $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); };
-    const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : +el.value; } lsSet(LS.prefs, o); };
+    const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
     $('showEnd').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
-    $('showNames').onchange = () => this.gn.selectAll('g.node text').style('display', $('showNames').checked ? null : 'none');
+    $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); };
     this.gn.classed('imgs', $('showImg').checked);
     $('hide').oninput = () => { $('hideV').textContent = hideLabel(+$('hide').value); this.render(); };
@@ -433,9 +435,9 @@ class ZigbeeMapPanel extends HTMLElement {
     withImg.append('image').attr('class', 'img')
       .attr('href', d => imgUrl(d.model)).attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
       .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); });
-    ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').text(d => d.name).style('display', $('showNames').checked ? null : 'none');
+    ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').text(d => d.name);
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
-    this.applyImgSize();
+    this.applyImgSize(); this.applyNames();
     // weak gravity toward the canvas centre so nodes that lose all visible links do not fly off; stronger for isolated ones
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
     const cv = $('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2, grav = d => deg[d.id] ? 0.03 : 0.15;
@@ -459,6 +461,11 @@ class ZigbeeMapPanel extends HTMLElement {
       g.select('text').attr('dy', has && on ? r + 11 : d.isEnd ? 14 : 22);
     });
     this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18, on ? S0 * 0.33 + 10 : 0) : Math.max(42, on ? S0 / 2 + 14 : 0));
+  }
+  // labels: none / routers (coordinator included) / all
+  applyNames() {
+    const mode = this.$('names').value;
+    this.gn?.selectAll('g.node text').style('display', d => mode === 'all' || (mode === 'routers' && !d.isEnd) ? null : 'none');
   }
   draw() {
     this.gl.selectAll('g.link').each(function (l) { for (const ln of this.children) { ln.setAttribute('x1', l.source.x); ln.setAttribute('y1', l.source.y); ln.setAttribute('x2', l.target.x); ln.setAttribute('y2', l.target.y); } });
