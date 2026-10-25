@@ -407,8 +407,8 @@ class ZigbeeMapPanel extends HTMLElement {
     if (!this.data) return;
     const { nodes, links } = this.visible(), self = this, byId = this.data.byId, $ = this.$;
     const color = l => l.oneSided ? LQ.grey : lqColor(l.min);
-    // router links 1.5..5 px by LQI, end-device links thin and constant, one-sided links hairlines
-    const width = l => l.oneSided ? 0.8 : l.endLink ? 0.8 : 1.5 + 3.5 * Math.min(l.min, 200) / 200;
+    // every link 1.5..5 px by LQI (end-device links included), one-sided links hairlines
+    const width = l => l.oneSided ? 0.8 : 1.5 + 3.5 * Math.min(l.min, 200) / 200;
     const fmt = v => v == null ? '–' : v, key = l => l.s.id + '|' + l.t.id;
     // routing-table entries, identical ones collapsed (tables often hold a dozen inactive entries for one destination)
     const routesText = rs => { const c = {}; for (const r of rs) { const k = `${byId[r.via]?.name ?? r.via} → nwk ${r.to} ${r.status}`; c[k] = (c[k] || 0) + 1; } return Object.entries(c).map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join('; '); };
