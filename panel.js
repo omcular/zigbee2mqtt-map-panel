@@ -474,6 +474,9 @@ class ZigbeeMapPanel extends HTMLElement {
       g.select('circle.imgbg').attr('r', r);
       g.select('text').attr('dy', has && on ? r + 11 : d.isEnd ? 14 : 22);
       d._r = has && on ? r + 1 : d.type === 'Coordinator' ? 14 : d.isEnd ? 7 : 12;   // where this node's own links end
+      // the stale ring and the pin halo follow the image size, otherwise they sit inside a large picture
+      const ringR = has && on ? r : d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12;
+      g.select('circle.ring').attr('r', ringR); g.select('circle.halo').attr('r', ringR + 7);
     });
     this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18, on ? S0 * 0.33 + 10 : 0) : Math.max(42, on ? S0 / 2 + 14 : 0));
   }
