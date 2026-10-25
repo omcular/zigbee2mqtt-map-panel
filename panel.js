@@ -16,7 +16,7 @@ function loadD3() {
 }
 // hide slider: 0 = show all, otherwise hide links with LQI <= v (weaker direction). Bad links are found by colour, not by hiding good ones.
 const hideOk = (lq, v) => v > 0 ? lq > v : true;
-const hideLabel = v => v > 0 ? `≤ ${v} hidden` : 'off';
+const hideLabel = v => v > 0 ? `> ${v}` : 'off';
 const imgUrl = m => m ? `https://www.zigbee2mqtt.io/images/devices/${String(m).replace(/[/:\s]/g, '-')}.png` : null;
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const LQ = { red: '#e5484d', orange: '#f5a623', green: '#46c36a', green2: '#22d66f', grey: '#8a8f99' };
@@ -108,7 +108,7 @@ const STYLE = `
 const BAR = `
   <ha-menu-button></ha-menu-button>
   <button id="pull" class="primary">pull fresh map</button>
-  <label title="hide links whose weaker direction is at or below this LQI · far left: show all">hide weak links <input type="range" id="hide" min="0" max="255" value="0" step="5"> <span id="hideV">off</span></label>
+  <label title="show only links whose weaker direction is above this LQI · far left: show all">Min LQI <input type="range" id="hide" min="0" max="255" value="0" step="5"> <span id="hideV">off</span></label>
   <label>find <input type="text" id="find" placeholder="node name…"></label>
   <details id="opts" class="dd"><summary>options ▾</summary><div class="menu">
     <label><input type="checkbox" id="showEnd"> end devices</label>
@@ -156,7 +156,7 @@ const BAR = `
       <dt>background scan</dt><dd>Home Assistant asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule through the last-request time kept in HA</dd>
       <dt>pull fresh map</dt><dd>starts a scan now. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" sends the request to the networkmap_fast extension's own topic (2 routers at a time; more loses routers behind weak links). With the extension's default config the normal topic is served by it too, so the toggle only matters if that takeover is off</dd>
-      <dt>hide weak links</dt><dd>hides every link whose weaker direction is at or below the chosen LQI; far left shows all. Bad links are easiest found by colour with the slider at 0</dd>
+      <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
