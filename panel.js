@@ -79,7 +79,7 @@ const STYLE = `
   #legend span.grad { position:relative; display:inline-block; width:120px; height:5px; border-radius:2px; vertical-align:middle; margin:0 20px 10px 6px; }
   #legend span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:380px; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
-  svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; }
+  svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
   svg:active { cursor:grabbing; }
   svg.rotating { cursor:grabbing; }
   #tip .big { font-size:22px; font-weight:600; line-height:1.1; margin-bottom:3px; }
