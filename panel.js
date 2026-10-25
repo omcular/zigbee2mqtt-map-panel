@@ -229,7 +229,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const last = Math.max(this.lastRequestMs(), this.data ? (Date.parse(this.data.fetchedAt) || 0) : 0);
     if (Date.now() - last >= live * 60000) this.pull(true);
   }
-  onResize() { const bar = this.$('bar'); if (bar) { const h = bar.offsetHeight + 'px'; if (this._barh !== h) { this._barh = h; this.style.setProperty('--barh', h); } } if (this.sim && this.data) { const c = this.$('canvas'), cx = c.clientWidth / 2, cy = c.clientHeight / 2; this.sim.force('center', d3.forceCenter(cx, cy)); this.sim.force('x')?.x(cx); this.sim.force('y')?.y(cy); } }
+  onResize() { const bar = this.$('bar'); if (bar) { const h = bar.offsetHeight + 'px'; if (this._barh !== h) { this._barh = h; this.style.setProperty('--barh', h); } } if (this.sim && this.data) { const c = this.$('canvas'), cx = c.clientWidth / 2, cy = c.clientHeight / 2; this.sim.force('center', d3.forceCenter(cx, cy)); this.applyGravity(); } }
 
   // retained copy kept by HA (zigbee_map_store automation): arrives immediately on subscribe, and after every scan
   async watchStore() {
@@ -456,10 +456,9 @@ class ZigbeeMapPanel extends HTMLElement {
     ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').text(d => d.name);
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
     this.applyImgSize(); this.applyNames();
-    // weak gravity toward the canvas centre so nodes that lose all visible links do not fly off; stronger for isolated ones
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
-    const cv = $('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2, grav = d => deg[d.id] ? 0.03 : 0.15;
-    this.sim.force('x', d3.forceX(cx).strength(grav)).force('y', d3.forceY(cy).strength(grav));
+    this._deg = deg; this.applyGravity();
+    const cv = $('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2;
     this.sim.nodes(nodes); this.sim.force('link').links(links);
     for (const n of nodes) if (n.x == null) { n.x = cx + (Math.random() - 0.5) * 80; n.y = cy + (Math.random() - 0.5) * 80; }
     if (!this.warm) { this.warm = true; this.sim.force('center', d3.forceCenter(cx, cy)); this.sim.alpha(1); for (let i = 0; i < 250; i++) this.sim.tick(); }
@@ -479,6 +478,14 @@ class ZigbeeMapPanel extends HTMLElement {
       g.select('text').attr('dy', has && on ? r + 11 : d.isEnd ? 14 : 22);
     });
     this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18, on ? S0 * 0.33 + 10 : 0) : Math.max(42, on ? S0 / 2 + 14 : 0));
+  }
+  // weak gravity toward the canvas centre so nodes that lose all visible links do not fly off. Nodes WITHOUT any visible
+  // link are parked in a strip near the bottom instead: at the centre they sit on top of other nodes' links and look connected
+  applyGravity() {
+    if (!this.sim || !this._deg) return;
+    const cv = this.$('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2, deg = this._deg, iso = d => !deg[d.id];
+    this.sim.force('x', d3.forceX(cx).strength(d => iso(d) ? 0.06 : 0.03))
+      .force('y', d3.forceY(d => iso(d) ? cy + cv.clientHeight * 0.42 : cy).strength(d => iso(d) ? 0.2 : 0.03));
   }
   // constant 3 px, or 1.5..5 px by LQI when "link width by LQI" is on; one-sided links are hairlines either way
   linkWidth(l) { return l.oneSided ? 0.8 : this.$('lqWidth').checked ? 1.5 + 3.5 * Math.min(l.min, 200) / 200 : 3; }
