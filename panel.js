@@ -28,6 +28,22 @@ const lqColor = v => v == null || v === 0 ? LQ.grey : smoothColours ? lqSmooth(v
 const LQ_GRADIENT = `linear-gradient(to right, ${LQ.red} 0%, ${LQ.orange} ${50 / 2.55}%, ${LQ.green} ${80 / 2.55}%, ${LQ.green2} 100%)`;
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+// label as up to three lines of tspans, broken at spaces to fit maxW px (measured with a canvas, so hidden labels wrap too);
+// the first tspan carries no dy of its own, the text element's dy keeps positioning the first line
+function wrapLabel(textEl, name, maxW) {
+  const cs = getComputedStyle(textEl), ctx = (wrapLabel._c ??= document.createElement('canvas').getContext('2d'));
+  ctx.font = `${cs.fontWeight || 400} ${cs.fontSize || '11px'} ${cs.fontFamily || 'sans-serif'}`;
+  const width = t => ctx.measureText(t).width, words = String(name).split(/\s+/).filter(Boolean), lines = [];
+  let cur = '';
+  for (const w of words) {
+    const next = cur ? cur + ' ' + w : w;
+    if (!cur || width(next) <= maxW) cur = next; else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > 3) { lines.length = 3; lines[2] += '…'; }
+  const sel = d3.select(textEl); sel.text(null);
+  lines.forEach((t, i) => { const ts = sel.append('tspan').attr('x', 0).text(t); if (i) ts.attr('dy', '1.15em'); });
+}
 
 // raw map -> {nodes, links}; source = neighbour, target = reporting device, lqi = what the target hears from the source
 function mergeMap(map) {
@@ -450,7 +466,7 @@ class ZigbeeMapPanel extends HTMLElement {
     withImg.append('image').attr('class', 'img')
       .attr('href', d => imgUrl(d.model)).attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
       .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); g.classList.remove('hasimg'); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); g.__data__._r = g.__data__.isEnd ? 7 : 12; });
-    ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').text(d => d.name);
+    ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').each(function (d) { wrapLabel(this, d.name, d.isEnd ? 90 : 100); });
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
     this.applyImgSize(); this.applyNames();
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
