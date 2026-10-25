@@ -235,7 +235,7 @@ class ZigbeeMapPanel extends HTMLElement {
     try {
       // progress comes from the networkmap_fast extension; with its default config it also answers the normal topic, so always listen
       progSub = await h.connection.subscribeMessage(msg => { try { const p = JSON.parse(msg.payload); progress = ` · ${p.done}/${p.total} routers${p.failed ? `, ${p.failed} not answering` : ''}`; } catch (e) {} },
-        { type: 'mqtt/subscribe', topic: `${this.baseTopic}/bridge/response/networkmap_fast/progress` });
+        { type: 'mqtt/subscribe', topic: `${this.baseTopic}/bridge/networkmap_fast/progress` });
       unsub = await h.connection.subscribeMessage(msg => {
         let r; try { r = JSON.parse(msg.payload); } catch (e) { return; }
         if (r.status !== 'ok') { done(); st.textContent = 'Z2M error: ' + (r.error || 'unknown'); return; }
