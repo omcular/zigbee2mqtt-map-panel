@@ -123,6 +123,7 @@ const BAR = `
     <label>show names for <select id="names"><option value="none">none</option><option value="routers">routers only</option><option value="all" selected>all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
     <label title="on: link colour runs continuously from red (0) through orange (50) to green (80 and up) · off: three fixed colours"><input type="checkbox" id="smooth" checked> smooth link colours</label>
+    <label title="off: every link 3 px · on: 1.5 px at LQI 0 up to 5 px at 200"><input type="checkbox" id="lqWidth"> link width by LQI</label>
     <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> routes on pull</label>
     <div class="sep"></div>
     <label title="Home Assistant scans on its own at this interval, whether anyone is looking or not (input_number.zigbee_map_scan_interval). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
@@ -147,7 +148,7 @@ const BAR = `
     </dl>
     <h4>Reading the map</h4>
     <dl>
-      <dt>a / b on a link</dt><dd>what the left-hand node hears from the right-hand one / what the right-hand node hears. LQI 0–255, higher is better: colour runs from <span style="color:var(--red)">red (0)</span> through <span style="color:var(--orange)">orange (50)</span> to <span style="color:var(--green)">green (80 and up)</span>; "smooth link colours" off in options gives three fixed bands instead. Colour and width follow the weaker direction</dd>
+      <dt>a / b on a link</dt><dd>what the left-hand node hears from the right-hand one / what the right-hand node hears. LQI 0–255, higher is better: colour runs from <span style="color:var(--red)">red (0)</span> through <span style="color:var(--orange)">orange (50)</span> to <span style="color:var(--green)">green (80 and up)</span>; "smooth link colours" off in options gives three fixed bands instead. Colour follows the weaker direction; "link width by LQI" in options adds width as a second cue</dd>
       <dt>dashed grey</dt><dd>only one side reported the link, or reported 0: usually a stale neighbour-table entry (hidden unless "one-sided / stale links" is on)</dd>
       <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI contrast" in options sets how much; "spacing" scales all distances)</dd>
@@ -338,7 +339,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
       .on('tick', () => { this.draw(); this.savePosSoon(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
-    const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'smooth', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'smooth', 'lqWidth', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
@@ -351,6 +352,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
     const applySmooth = () => { smoothColours = $('smooth').checked; $('legend').innerHTML = legendHtml(smoothColours); this.gl?.selectAll('g.link line.vis').attr('stroke', l => l.oneSided ? LQ.grey : lqColor(l.min)); };
     $('smooth').onchange = applySmooth; applySmooth();
+    $('lqWidth').onchange = () => this.gl?.selectAll('g.link line.vis').attr('stroke-width', l => this.linkWidth(l));
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); };
     this.gn.classed('imgs', $('showImg').checked);
@@ -407,8 +409,7 @@ class ZigbeeMapPanel extends HTMLElement {
     if (!this.data) return;
     const { nodes, links } = this.visible(), self = this, byId = this.data.byId, $ = this.$;
     const color = l => l.oneSided ? LQ.grey : lqColor(l.min);
-    // every link 1.5..5 px by LQI (end-device links included), one-sided links hairlines
-    const width = l => l.oneSided ? 0.8 : 1.5 + 3.5 * Math.min(l.min, 200) / 200;
+    const width = l => this.linkWidth(l);
     const fmt = v => v == null ? '–' : v, key = l => l.s.id + '|' + l.t.id;
     // routing-table entries, identical ones collapsed (tables often hold a dozen inactive entries for one destination)
     const routesText = rs => { const c = {}; for (const r of rs) { const k = `${byId[r.via]?.name ?? r.via} → nwk ${r.to} ${r.status}`; c[k] = (c[k] || 0) + 1; } return Object.entries(c).map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join('; '); };
@@ -479,6 +480,8 @@ class ZigbeeMapPanel extends HTMLElement {
     });
     this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18, on ? S0 * 0.33 + 10 : 0) : Math.max(42, on ? S0 / 2 + 14 : 0));
   }
+  // constant 3 px, or 1.5..5 px by LQI when "link width by LQI" is on; one-sided links are hairlines either way
+  linkWidth(l) { return l.oneSided ? 0.8 : this.$('lqWidth').checked ? 1.5 + 3.5 * Math.min(l.min, 200) / 200 : 3; }
   // labels: none / routers (coordinator included) / all
   applyNames() {
     const mode = this.$('names').value;
