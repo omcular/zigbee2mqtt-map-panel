@@ -105,6 +105,7 @@ const BAR = `
   <details id="opts" class="dd"><summary>options ▾</summary><div class="menu">
     <label><input type="checkbox" id="showEnd"> end devices</label>
     <label><input type="checkbox" id="showOne"> one-sided / stale links</label>
+    <label title="when a node is selected, also reveal its one-sided (dashed) links; links hidden by the hide slider are always revealed"><input type="checkbox" id="selOne"> … also on a selected node</label>
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg"> show device images</label>
     <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
@@ -129,14 +130,14 @@ const BAR = `
       <dt><kbd>Ctrl</kbd>-drag · middle-drag</dt><dd>rotate the whole map around the centre of the view; positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
-      <dt>click node · click background</dt><dd>show that node with ALL its links, even the ones the hide slider or the one-sided filter would hide, and fade the rest · back to normal</dd>
+      <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
     </dl>
     <h4>Reading the map</h4>
     <dl>
       <dt>a / b on a link</dt><dd>what the left-hand node hears from the right-hand one / what the right-hand node hears. LQI 0–255, higher is better: <span style="color:var(--green)">≥ 80</span>, <span style="color:var(--orange)">50–79</span>, <span style="color:var(--red)">&lt; 50</span>. Colour and width follow the weaker direction</dd>
       <dt>dashed grey</dt><dd>only one side reported the link, or reported 0: usually a stale neighbour-table entry (hidden unless "one-sided / stale links" is on)</dd>
-      <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node always reveals all of its links</dd>
+      <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI → length" in options sets how much; "spring" scales everything)</dd>
       <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "show device images" in options puts the zigbee2mqtt.io photo on each node, "image size" scales them (needs internet; the PNG export leaves them out)</dd>
       <dt>what a link is</dt><dd>an entry in a router's neighbour table, not a live route. These tables hold ~16 entries and age in and out, so links come and go between scans; judge a path over several scans</dd>
@@ -322,7 +323,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
       .on('tick', () => { this.draw(); this.savePosSoon(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spring / LQI→length / pin mode have their own keys
-    const PREFS = ['showEnd', 'showOne', 'showSib', 'showLql', 'showNames', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'showNames', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
     $('hideV').textContent = hideLabel(+$('hide').value);
@@ -330,7 +331,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); };
     const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
-    $('showEnd').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render();
+    $('showEnd').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
     $('showNames').onchange = () => this.gn.selectAll('g.node text').style('display', $('showNames').checked ? null : 'none');
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); };
@@ -371,7 +372,7 @@ class ZigbeeMapPanel extends HTMLElement {
   savePosSoon() { clearTimeout(this._posT); this._posT = setTimeout(() => this.savePos(), 1500); }
   saveView() { if (this._zoomT) lsSet(LS.view, { k: this._zoomT.k, x: this._zoomT.x, y: this._zoomT.y }); }
   visible() {
-    const $ = this.$, se = $('showEnd').checked, so = $('showOne').checked, ss = $('showSib').checked, hv = +$('hide').value;
+    const $ = this.$, se = $('showEnd').checked, so = $('showOne').checked, sr = $('selOne').checked, ss = $('showSib').checked, hv = +$('hide').value;
     const nodes = this.data.nodes.filter(n => se || !n.isEnd);
     const vis = new Set(nodes.map(n => n.id));
     const sel = this.selected;
@@ -379,7 +380,7 @@ class ZigbeeMapPanel extends HTMLElement {
     for (const l of this.data.links) {
       if (!vis.has(l.s.id) || !vis.has(l.t.id)) continue;
       const normal = (so || !l.oneSided) && (ss || !l.sibling) && (l.oneSided || hideOk(l.min, hv));
-      l.revealed = !normal && !!sel && (l.s === sel || l.t === sel);   // shown only because of the selection: drawn, but no force
+      l.revealed = !normal && !!sel && (l.s === sel || l.t === sel) && (so || sr || !l.oneSided);   // shown only because of the selection: drawn, but no force
       if (normal || l.revealed) links.push(l);
     }
     return { nodes, links };
