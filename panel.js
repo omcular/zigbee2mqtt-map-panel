@@ -298,7 +298,7 @@ class ZigbeeMapPanel extends HTMLElement {
       const rels = [l.relS, l.relT].filter(r => r != null); l.sibling = rels.length > 0 && rels.every(r => r === 2);
     }
     this.data = { nodes, links, byId, fetchedAt };
-    this.selected = null;
+    this.selected = this.selected ? byId[this.selected.id] ?? null : null;   // a new scan keeps the current selection if the node still exists
     const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator').length, ends = nodes.filter(n => n.isEnd).length;
     this.$('status').textContent = `map ${new Date(fetchedAt).toLocaleString()} · ${routers} routers, ${ends} end devices, ${links.length} links`;
     if (!(seeded > 0)) this.warm = false;
