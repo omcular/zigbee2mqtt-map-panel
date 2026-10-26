@@ -250,7 +250,7 @@ class ZigbeeMapPanel extends HTMLElement {
     try { await loadD3(); } catch (e) { this.$('status').textContent = e.message; return; }
     this.initGraph();
     const cached = lsGet(LS.map, null);
-    if (cached) { this.setMap(cached.map, cached.fetchedAt); this.$('status').textContent += ' (cached in this browser)'; }
+    if (cached) { this.setMap(cached.map, cached.fetchedAt); this.$('status').append(' (cached in this browser)'); }
     else this.$('status').textContent = 'no map yet, press "pull fresh map"';
     this.watchStore();
     new ResizeObserver(() => this.onResize()).observe(this.$('canvas'));
@@ -319,7 +319,7 @@ class ZigbeeMapPanel extends HTMLElement {
         const fetchedAt = new Date().toISOString();
         lsSet(LS.map, { fetchedAt, map: r.data.value });
         this.setMap(r.data.value, fetchedAt);
-        if (r.data.duration) st.textContent += ` · scan took ${r.data.duration} s`;
+        if (r.data.duration) st.append(` · scan took ${r.data.duration} s`);   // append, not textContent +=: that would flatten the clickable mesh numbers into plain text
       }, { type: 'mqtt/subscribe', topic: `${this.baseTopic}/bridge/response/${kind}` });
       await h.callService('mqtt', 'publish', { topic: `${this.baseTopic}/bridge/request/${kind}`, payload: JSON.stringify({ type: 'raw', routes: !!this.$('routes').checked }) });
     } catch (e) { done(); st.textContent = 'failed: ' + (e.message || JSON.stringify(e)) + ' (admin user needed for mqtt/subscribe)'; }
