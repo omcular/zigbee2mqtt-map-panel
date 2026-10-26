@@ -1,9 +1,12 @@
-/* Zigbee map panel for Home Assistant (panel_custom).
- * Shows the last Zigbee2MQTT raw network map kept retained on <store_topic> by the zigbee_map_store automation
- * (background scan every 6 h), and can request a fresh scan over HA's own websocket (mqtt.publish + mqtt/subscribe),
- * renders it as a d3 force graph with pinnable nodes. Admin user required (mqtt/subscribe is admin-only).
- * Files: /config/www/zigbee_map/panel.js + d3.v7.min.js ; config: yamls/zigbee_map_panel.yaml
+/* zigbee2mqtt-map-panel: Zigbee2MQTT's network map as a Home Assistant sidebar panel (panel_custom).
+ * Shows the last raw network map that Home Assistant keeps retained on <store_topic> (see packages/zigbee_map_panel.yaml:
+ * a background scan automation stores every answer there), can request a fresh scan over HA's own websocket
+ * (mqtt.publish + mqtt/subscribe) and renders the map as a d3 force graph with pinnable nodes.
+ * Admin user required: the websocket command mqtt/subscribe is admin-only.
+ * Files: zigbee2mqtt-map-panel.js + d3.v7.min.js (loaded from next to this file); config: packages/zigbee_map_panel.yaml.
  */
+const VERSION = '1.0.0';
+console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
 const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1' };
@@ -124,6 +127,7 @@ const STYLE = `
   details#help dl { display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; margin:0; }
   details#help dt { color:var(--primary-text-color); white-space:nowrap; }
   details#help dd { margin:0; color:var(--muted); }
+  details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
   details.dd .menu input[type=range] { width:120px; }
   #legend { position:absolute; left:10px; bottom:10px; background:var(--panel); border:1px solid var(--divider-color,#333); border-radius:6px; padding:6px 9px; font-size:11px; color:var(--muted); max-width:min(900px,calc(100% - 40px)); }
@@ -214,6 +218,7 @@ const BAR = `
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
+    <p class="ver">zigbee2mqtt-map-panel v${VERSION}</p>
   </div></details>
   <span id="status"></span>`;
 
@@ -606,4 +611,5 @@ class ZigbeeMapPanel extends HTMLElement {
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
   }
 }
-customElements.define('zigbee-map-panel', ZigbeeMapPanel);
+// HACS also loads this file as a dashboard resource under another URL; HA is a single-page app, so the element may already exist
+if (!customElements.get('zigbee-map-panel')) customElements.define('zigbee-map-panel', ZigbeeMapPanel);
