@@ -466,7 +466,9 @@ class ZigbeeMapPanel extends HTMLElement {
     withImg.append('image').attr('class', 'img')
       .attr('href', d => imgUrl(d.model)).attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
       .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); g.classList.remove('hasimg'); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); g.__data__._r = g.__data__.isEnd ? 7 : 12; });
-    ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle').each(function (d) { wrapLabel(this, d.name, d.isEnd ? 90 : 100); });
+    ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle');
+    // labels follow renames: rewrite the text whenever the node's name differs from what is drawn (covers new nodes too)
+    this.gn.selectAll('g.node').each(function (d) { const t = this.querySelector('text'); if (t.__label !== d.name) { t.__label = d.name; wrapLabel(t, d.name, d.isEnd ? 90 : 100); } });
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
     this.applyImgSize(); this.applyNames();
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
