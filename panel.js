@@ -46,6 +46,41 @@ function wrapLabel(textEl, name, maxW) {
 }
 
 // raw map -> {nodes, links}; source = neighbour, target = reporting device, lqi = what the target hears from the source
+// Two numbers that summarise the router mesh, both from the weaker direction of each two-sided router link:
+//   connected at >= C : the highest LQI threshold at which every router still reaches the coordinator
+//   redundant at >= R : the highest threshold at which no single router is a point of failure (removing any one
+//                       router leaves every other router connected to the coordinator)
+// Routers without any two-sided link (dead or just paired) are left out and reported in `ignored`. Also returns the
+// link that limits C and, for R, the router that becomes a single point of failure just above R and whom it cuts off.
+function meshThresholds(nodes, links) {
+  const coord = nodes.find(n => n.type === 'Coordinator');
+  const usable = links.filter(l => !l.endLink && !l.oneSided && l.min > 0);
+  const linked = new Set(usable.flatMap(l => [l.s.id, l.t.id]));
+  const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator');
+  const members = routers.filter(n => linked.has(n.id)).map(n => n.id); if (coord) members.push(coord.id);
+  const ignored = routers.filter(n => !linked.has(n.id)).map(n => n.name);
+  if (!coord || members.length < 2) return null;
+  const reach = (t, without) => {   // ids reachable from the coordinator over links with min >= t, skipping `without`
+    const adj = {}; for (const id of members) adj[id] = [];
+    for (const l of usable) if (l.min >= t && l.s.id !== without && l.t.id !== without) { adj[l.s.id].push(l.t.id); adj[l.t.id].push(l.s.id); }
+    const seen = new Set([coord.id]), stack = [coord.id];
+    while (stack.length) { const x = stack.pop(); for (const y of adj[x]) if (!seen.has(y) && y !== without) { seen.add(y); stack.push(y); } }
+    return seen;
+  };
+  const allIn = (t, without) => reach(t, without).size === members.length - (without ? 1 : 0);
+  const values = [...new Set(usable.map(l => l.min))].sort((a, b) => a - b);   // candidate thresholds, ascending
+  const best = test => { let r = 0; for (const t of values) { if (test(t)) r = t; else break; } return r; };   // monotone: once it fails it stays failed
+  const connected = best(t => allIn(t));
+  const redundant = best(t => allIn(t) && members.every(id => id === coord.id || allIn(t, id)));
+  // what limits each number
+  const nextAbove = v => values.find(t => t > v);
+  let bottleneck = null; const tc = nextAbove(connected);
+  if (tc != null) { const r = reach(tc); const lost = members.filter(id => !r.has(id)); bottleneck = usable.filter(l => l.min === connected && (r.has(l.s.id) !== r.has(l.t.id)))[0] ?? null; bottleneck = bottleneck && { link: bottleneck, lost }; }
+  let spof = null; const tr = nextAbove(redundant);
+  if (tr != null) { const base = reach(tr); for (const id of members) { if (id === coord.id) continue; const r = reach(tr, id); const lost = members.filter(x => x !== id && base.has(x) && !r.has(x)); if (lost.length) { spof = { id, lost }; break; } } }   // only routers that are reachable at all at that level count as cut off
+  return { connected, redundant, ignored, bottleneck, spof, routers: members.length - 1 };
+}
+
 function mergeMap(map) {
   const nodes = map.nodes.map(n => ({ id: n.ieeeAddr, name: n.friendlyName || n.ieeeAddr, type: n.type, nwk: n.networkAddress, lastSeen: n.lastSeen ?? null,
     model: n.definition?.model ?? '', vendor: n.definition?.vendor ?? '', desc: n.definition?.description ?? '' }));
@@ -74,6 +109,7 @@ const STYLE = `
   #bar button:hover { border-color:#888; }
   #bar button.primary { border-color:var(--primary-color,#03a9f4); color:var(--primary-color,#03a9f4); }
   #status { color:var(--muted); margin-left:auto; }
+  #status .mesh { color:var(--primary-text-color,#dfe3ea); cursor:pointer; text-decoration:underline dotted; }
   details.dd { position:relative; }
   details.dd summary { list-style:none; cursor:pointer; background:var(--bgc); border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 8px; user-select:none; }
   details.dd summary::-webkit-details-marker { display:none; }
@@ -173,6 +209,7 @@ const BAR = `
       <dt>background scan</dt><dd>Home Assistant asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule through the last-request time kept in HA</dd>
       <dt>pull fresh map</dt><dd>starts a scan now. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" sends the request to the networkmap_fast extension's own topic (2 routers at a time; more loses routers behind weak links). With the extension's default config the normal topic is served by it too, so the toggle only matters if that takeover is off</dd>
+      <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
@@ -314,7 +351,19 @@ class ZigbeeMapPanel extends HTMLElement {
     this.data = { nodes, links, byId, fetchedAt };
     this.selected = this.selected ? byId[this.selected.id] ?? null : null;   // a new scan keeps the current selection if the node still exists
     const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator').length, ends = nodes.filter(n => n.isEnd).length;
-    this.$('status').textContent = `map ${new Date(fetchedAt).toLocaleString()} · ${routers} routers, ${ends} end devices, ${links.length} links`;
+    const mesh = meshThresholds(nodes, links); this.mesh = mesh;
+    const st = this.$('status'); st.textContent = `map ${new Date(fetchedAt).toLocaleString()} · ${routers} routers, ${ends} end devices, ${links.length} links`;
+    if (mesh) {
+      const nm = id => byId[id]?.name ?? id;
+      const tipC = `every router reaches the coordinator over links of LQI ${mesh.connected} or better (weaker direction)` +
+        (mesh.bottleneck ? `\nweakest necessary link: ${nm(mesh.bottleneck.link.s.id)} – ${nm(mesh.bottleneck.link.t.id)} (${mesh.connected}); without it ${mesh.bottleneck.lost.length} router${mesh.bottleneck.lost.length === 1 ? '' : 's'} would be cut off` : '') +
+        (mesh.ignored.length ? `\nignored (no two-sided link): ${mesh.ignored.join(', ')}` : '') + `\nclick: set Min LQI to this level`;
+      const tipR = `no single router is a point of failure at LQI ${mesh.redundant} or better: remove any one router and the rest still reach the coordinator` +
+        (mesh.spof ? `\njust above that, ${nm(mesh.spof.id)} becomes a single point of failure for ${mesh.spof.lost.map(nm).join(', ')}` : mesh.redundant === mesh.connected ? '\nlimited by the same link as "connected"' : '') + `\nclick: set Min LQI to this level`;
+      st.append(' · mesh: ');
+      const mk = (label, v, tip) => { const b = document.createElement('span'); b.className = 'mesh'; b.textContent = `${label} ≥ ${v}`; b.title = tip; b.onclick = () => this.setMinLqi(v); st.append(b); };
+      mk('connected', mesh.connected, tipC); st.append(', '); mk('redundant', mesh.redundant, tipR);
+    }
     if (!(seeded > 0)) this.warm = false;
     this.render();
   }
@@ -514,6 +563,7 @@ class ZigbeeMapPanel extends HTMLElement {
   // constant width: colour alone carries the LQI; one-sided links are hairlines
   linkWidth(l) { return l.oneSided ? 0.8 : 3; }
   // labels: none / routers (coordinator included) / all
+  setMinLqi(v) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5); h.dispatchEvent(new Event('input')); }
   applyNames() {
     const mode = this.$('names').value;
     this.gn?.selectAll('g.node text').style('display', d => mode === 'all' || (mode === 'routers' && !d.isEnd) ? null : 'none');
