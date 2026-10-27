@@ -1,0 +1,63 @@
+name: Bug report
+description: Something does not work as described
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please fill in the versions: most problems depend on them.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what happened instead. A screenshot of the panel or the dialog helps.
+    validations:
+      required: true
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.10.2 (Settings → About)"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Zigbee2MQTT map version
+      placeholder: "2.0.1 (HACS, or Settings → Devices & services → Zigbee2MQTT map → device → Firmware)"
+    validations:
+      required: true
+  - type: input
+    id: z2m
+    attributes:
+      label: Zigbee2MQTT version and coordinator
+      placeholder: "2.14.2, SLZB-06M (EmberZNet)"
+    validations:
+      required: true
+  - type: dropdown
+    id: extension
+    attributes:
+      label: networkmap_fast extension loaded in Zigbee2MQTT?
+      options: ["no", "yes", "not sure"]
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser or app
+      placeholder: "Firefox 150 on Linux / HA Companion app on Android"
+  - type: textarea
+    id: log
+    attributes:
+      label: Home Assistant log
+      description: |
+        Lines mentioning `zigbee2mqtt_map`. For scan problems turn on debug logging first, reproduce, then paste:
+        Settings → Devices & services → Zigbee2MQTT map → three dots → Enable debug logging (or in configuration.yaml:
+        `logger: logs: custom_components.zigbee2mqtt_map: debug`).
+      render: text
+  - type: textarea
+    id: console
+    attributes:
+      label: Browser console (panel problems)
+      description: F12 → Console while the panel is open; the panel prints its version on load.
+      render: text

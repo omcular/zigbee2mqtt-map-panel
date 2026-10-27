@@ -1,0 +1,16 @@
+name: Feature request
+description: Something the panel or the integration should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should it do, and why
+      description: What you are trying to find out about your mesh, and what the panel does not show or do today.
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Your setup
+      placeholder: "number of routers / end devices, coordinator, Zigbee2MQTT version"
