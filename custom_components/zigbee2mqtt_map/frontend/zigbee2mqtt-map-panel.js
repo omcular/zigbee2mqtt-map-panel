@@ -227,7 +227,7 @@ const BAR = `
     <p class="ver">zigbee2mqtt-map-panel v${VERSION}</p>
   </div></details>
   <span id="status"></span>
-  <div id="stale">the panel was updated on the server, this page still runs the old version<button id="reload">reload</button></div>`;
+  <div id="stale"><span id="staleMsg"></span><button id="reload">reload</button></div>`;
 
 const LEGEND_TAIL = `<span class="sw" style="height:0;border-top:2px dashed #999"></span>one side only &nbsp;·&nbsp; a / b = what left hears / what right hears &nbsp;·&nbsp; see "help ▾"`;
 const legendHtml = smooth => smooth
@@ -248,6 +248,11 @@ class ZigbeeMapPanel extends HTMLElement {
     const reg = this._panel?.config?._panel_custom?.module_url; let urlStale = false;
     if (reg) { try { const a = new URL(reg, location.href), b = new URL(import.meta.url); urlStale = a.pathname !== b.pathname || a.searchParams.get('v') !== b.searchParams.get('v'); } catch (e) {} }
     const verStale = this.S.version && this.S.version !== VERSION;
+    // a different integration version means new files on disk but Home Assistant not restarted since (HACS update without
+    // restart, or the other way round after a downgrade): no page reload fixes that, a restart does
+    this.$('staleMsg').textContent = verStale ? `Home Assistant runs version ${this.S.version} of the integration, this panel file is ${VERSION}: restart Home Assistant`
+      : 'the panel was updated on the server, this page still runs the old version';
+    this.$('reload').style.display = verStale ? 'none' : '';
     this.$('stale').classList.toggle('show', !!(urlStale || verStale));
   }
   // panel config wins; otherwise the helper the package fills from the retained <base>/bridge/state message; last resort the Z2M default
