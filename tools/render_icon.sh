@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Renders brand/icon.svg to the PNG sizes HACS and the HA brands repo want (256, 512) and the 128 px docs copy.
+# Renders brand/icon.svg to the PNG sizes HACS (repo root brand/) and Home Assistant (custom_components/<domain>/brand/,
+# served at /api/brands/integration/zigbee2mqtt_map/ since HA 2026.3) want: 256 and 512 px, plus the 128 px docs copy.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 svg=$PWD/brand/icon.svg
@@ -14,4 +15,5 @@ render() {  # size, output
 render 256 brand/icon.png; cp brand/icon.png brand/logo.png
 render 512 brand/icon@2x.png; cp brand/icon@2x.png brand/logo@2x.png
 render 128 docs/icon.png
-ls -la brand/*.png docs/icon.png
+cp brand/icon.png brand/icon@2x.png brand/logo.png brand/logo@2x.png custom_components/zigbee2mqtt_map/brand/
+ls -la brand/*.png custom_components/zigbee2mqtt_map/brand/*.png docs/icon.png
