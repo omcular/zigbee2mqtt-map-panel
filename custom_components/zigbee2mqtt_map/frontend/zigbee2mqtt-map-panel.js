@@ -113,6 +113,9 @@ const STYLE = `
   #bar button:hover { border-color:#888; }
   #bar button.primary { border-color:var(--primary-color,#03a9f4); color:var(--primary-color,#03a9f4); }
   #status { color:var(--muted); margin-left:auto; }
+  #stale { display:none; flex-basis:100%; padding:6px 10px; background:var(--warning-color,#f5a623); color:#000; border-radius:4px; }
+  #stale.show { display:block; }
+  #stale button { margin-left:10px; font:inherit; padding:2px 10px; border-radius:4px; border:1px solid #0006; background:#fff8; cursor:pointer; }
   #status .mesh { color:var(--primary-text-color,#dfe3ea); cursor:pointer; text-decoration:underline dotted; }
   details.dd { position:relative; }
   details.dd summary { list-style:none; cursor:pointer; background:var(--bgc); border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 8px; user-select:none; }
@@ -223,7 +226,8 @@ const BAR = `
     </dl>
     <p class="ver">zigbee2mqtt-map-panel v${VERSION}</p>
   </div></details>
-  <span id="status"></span>`;
+  <span id="status"></span>
+  <div id="stale">the panel was updated on the server, this page still runs the old version<button id="reload">reload</button></div>`;
 
 const LEGEND_TAIL = `<span class="sw" style="height:0;border-top:2px dashed #999"></span>one side only &nbsp;·&nbsp; a / b = what left hears / what right hears &nbsp;·&nbsp; see "help ▾"`;
 const legendHtml = smooth => smooth
@@ -236,7 +240,16 @@ class ZigbeeMapPanel extends HTMLElement {
   set hass(h) { this._hass = h; const mb = this.shadowRoot.querySelector('ha-menu-button'); if (mb) { mb.hass = h; mb.narrow = this._narrow; } this.syncSched(); }
   get hass() { return this._hass; }
   set narrow(n) { this._narrow = n; const mb = this.shadowRoot.querySelector('ha-menu-button'); if (mb) mb.narrow = n; }
-  set panel(p) { this._panel = p; }
+  set panel(p) { this._panel = p; this.checkStale(); }
+  // HA pushes the panel list again after a restart; a different module URL (hash) or a different integration version than this
+  // file means newer panel code is on the server. A page cannot swap a custom element's class, so all we can do is ask for a reload.
+  checkStale() {
+    if (!this.$ || !this.$('stale')) return;
+    const reg = this._panel?.config?._panel_custom?.module_url; let urlStale = false;
+    if (reg) { try { const a = new URL(reg, location.href), b = new URL(import.meta.url); urlStale = a.pathname !== b.pathname || a.searchParams.get('v') !== b.searchParams.get('v'); } catch (e) {} }
+    const verStale = this.S.version && this.S.version !== VERSION;
+    this.$('stale').classList.toggle('show', !!(urlStale || verStale));
+  }
   // panel config wins; otherwise the helper the package fills from the retained <base>/bridge/state message; last resort the Z2M default
   get S() { return this._status || {}; }           // last status event from the integration
   get E() { return this.S.entities || {}; }         // entity ids of the settings entities: bg, live
@@ -253,6 +266,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const mb = r.querySelector('ha-menu-button'); mb.hass = this._hass; mb.narrow = this._narrow;
     this.$ = id => r.getElementById(id);
     this.$('pull').onclick = () => this.pull();
+    this.$('reload').onclick = () => location.reload();
     const dds = [this.$('opts'), this.$('help')];
     r.addEventListener('click', e => { for (const d of dds) if (d.open && !e.composedPath().includes(d)) d.open = false; });
     for (const d of dds) d.addEventListener('toggle', () => { if (d.open) for (const o of dds) if (o !== d) o.open = false; });
@@ -268,7 +282,7 @@ class ZigbeeMapPanel extends HTMLElement {
       const v = parseFloat(this.$(id).value); if (!Number.isFinite(v) || !this._hass || !this.E[key]) return;
       this._hass.callService('number', 'set_value', { entity_id: this.E[key], value: v }).catch(e => { this.$('schedNote').textContent = 'could not set ' + this.E[key] + ': ' + (e.message || e); });
     };
-    this.syncSched();
+    this.syncSched(); this.checkStale();
     if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000);
   }
   // mirror the HA interval entities into the options menu (they may be edited anywhere in HA)
@@ -298,7 +312,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const st = this.$('status');
     switch (ev.type) {
       case 'status':
-        this._status = ev; this.syncSched();
+        this._status = ev; this.syncSched(); this.checkStale();
         if (ev.scanning && !this._scan) this.beginScan(ev.scanning); else if (!ev.scanning && this._scan) this.endScan();
         break;
       case 'scan_started': if (!this._scan) this.beginScan(ev.kind); break;
