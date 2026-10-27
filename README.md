@@ -84,5 +84,5 @@ External extensions) and switch on **parallel scan** in the panel's options. Wit
 
 ## Credits
 
-Graph layout by [D3.js](https://d3js.org) (ISC licence, bundled as `dist/d3.v7.min.js`). Device pictures by
+Graph layout by [D3.js](https://d3js.org) (ISC licence, shipped unmodified as `dist/d3.v7.min.js`, see THIRD_PARTY.md). Device pictures by
 [zigbee2mqtt.io](https://www.zigbee2mqtt.io).
