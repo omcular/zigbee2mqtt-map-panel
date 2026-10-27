@@ -57,11 +57,12 @@ say "workflows for $sha"
 url="https://github.com/$repo/actions"
 echo "  $url"
 if [ $DRY = 1 ]; then echo "  (dry) would wait for the runs of this commit to finish"; else
+  expected=$(grep -lE '^\s*(on:\s*)?push' .github/workflows/*.yml | wc -l)   # one run per workflow file that triggers on push
   for i in $(seq 1 120); do   # up to 20 min
     runs=$(gh run list --commit "$sha" --json name,status,conclusion -q '.[] | "\(.name)\t\(.status)\t\(.conclusion // "")"' 2>/dev/null || true)
     total=$(printf '%s\n' "$runs" | grep -c . || true)
     done_=$(printf '%s\n' "$runs" | grep -c $'\tcompleted\t' || true)
-    if [ "$total" -ge 3 ] && [ "$done_" = "$total" ]; then break; fi
+    if [ "$total" -ge "$expected" ] && [ "$done_" = "$total" ]; then break; fi
     printf '\r  waiting… %s of %s runs finished (%ds)' "$done_" "$total" $((i*10)); sleep 10
   done; echo
   printf '%s\n' "$runs" | sed 's/^/  /'
