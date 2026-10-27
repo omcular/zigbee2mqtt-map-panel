@@ -2,6 +2,12 @@
 
 > DRAFT written by the maintainer's assistant. Rewrite in your own words before publishing; keep the facts.
 
+[![release](https://img.shields.io/github/v/release/omcular/zigbee2mqtt-map-panel?label=release)](https://github.com/omcular/zigbee2mqtt-map-panel/releases)
+[![HACS](https://img.shields.io/badge/HACS-custom-orange)](https://hacs.xyz)
+[![validate](https://github.com/omcular/zigbee2mqtt-map-panel/actions/workflows/validate.yml/badge.svg)](https://github.com/omcular/zigbee2mqtt-map-panel/actions/workflows/validate.yml)
+[![tests](https://github.com/omcular/zigbee2mqtt-map-panel/actions/workflows/tests.yml/badge.svg)](https://github.com/omcular/zigbee2mqtt-map-panel/actions/workflows/tests.yml)
+[![licence](https://img.shields.io/github/license/omcular/zigbee2mqtt-map-panel)](LICENSE)
+
 A Home Assistant integration that puts your Zigbee2MQTT network map in the sidebar, as a force graph you can actually
 work with: nodes stay where you pin them, links are coloured by the weaker of their two LQI directions, and two numbers
 tell you at a glance how strong the router mesh is. Installed from HACS, set up from the UI, no YAML.
@@ -38,14 +44,29 @@ over Home Assistant's websocket. The only thing that leaves your network is the 
 
 ## Install
 
-1. HACS → three-dot menu (top right) → **Custom repositories** → paste `https://github.com/omcular/zigbee2mqtt-map-panel`,
-   type **Integration**, Add.
-2. Still in HACS, search for **Zigbee2MQTT map**, open it, **Download**. Restart Home Assistant when HACS asks.
-3. Settings → Devices & services → **Add integration** → "Zigbee2MQTT map". The dialog shows the Zigbee2MQTT instances
-   found on your broker and pre-fills the base topic; confirm it.
-4. "Zigbee map" appears in the sidebar. Open it, press **pull fresh map**, then set the two intervals in **options**
+Not in the HACS default store yet, so it is added as a custom repository. This button does that for you (it opens your
+own Home Assistant through [My Home Assistant](https://my.home-assistant.io)):
+
+[![Open your Home Assistant instance and open the repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=omcular&repository=zigbee2mqtt-map-panel&category=integration)
+
+Or by hand: HACS → three-dot menu (top right) → **Custom repositories** → paste
+`https://github.com/omcular/zigbee2mqtt-map-panel`, type **Integration**, Add.
+
+Then, either way:
+
+1. In HACS, open **Zigbee2MQTT map** and **Download**. Restart Home Assistant when HACS asks.
+2. Add the integration:
+
+   [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=zigbee2mqtt_map)
+
+   or Settings → Devices & services → **Add integration** → "Zigbee2MQTT map". The dialog shows the Zigbee2MQTT
+   instances found on your broker and pre-fills the base topic; confirm it.
+3. "Zigbee map" appears in the sidebar. Open it, press **pull fresh map**, then set the two intervals in **options**
    (2 h background / 10 min while viewing is a sensible start). A scan of a 25-router mesh takes about 75 s with
    Zigbee2MQTT's own sequential scan.
+
+Without HACS: copy `custom_components/zigbee2mqtt_map/` from a [release](https://github.com/omcular/zigbee2mqtt-map-panel/releases)
+into your `config/custom_components/` and restart.
 
 The integration finds the base topic through the retained `<topic>/bridge/state` message Zigbee2MQTT publishes; only
 an `online` one counts, stale `offline` states from old installs are ignored. With several instances, pick one in the
