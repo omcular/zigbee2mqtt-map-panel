@@ -1,10 +1,10 @@
-# Zigbee2MQTT map panel
+# Zigbee2MQTT map
 
 > DRAFT written by the maintainer's assistant. Rewrite in your own words before publishing; keep the facts.
 
-A Home Assistant sidebar panel that shows your Zigbee2MQTT network map as a force graph you can actually work with:
-nodes stay where you pin them, links are coloured by the weaker of their two LQI directions, and two numbers tell
-you at a glance how strong the router mesh is.
+A Home Assistant integration that puts your Zigbee2MQTT network map in the sidebar, as a force graph you can actually
+work with: nodes stay where you pin them, links are coloured by the weaker of their two LQI directions, and two numbers
+tell you at a glance how strong the router mesh is. Installed from HACS, set up from the UI, no YAML.
 
 ![screenshot](docs/screenshot.png)
 
@@ -17,66 +17,46 @@ you at a glance how strong the router mesh is.
 - **Mesh numbers** — *connected ≥ C*: the highest LQI at which every router still reaches the coordinator; *redundant
   ≥ R*: the highest LQI at which no single router is a point of failure. Hover to see which link or router limits
   each number, click to set the filter there.
-- **Last map, always** — a background automation asks Zigbee2MQTT for the map on a schedule and keeps the answer
-  retained on MQTT, so the panel opens with the latest scan even on a device that never scanned, and a scan that
-  finishes after you close the page is not lost.
+- **Last map, always** — the integration asks Zigbee2MQTT for the map on a schedule and keeps the answer, so the panel
+  opens with the latest scan on any device, and a scan that finishes after you close the page is not lost.
 - **Scan while viewing** — while the panel is open it can re-scan at a second, shorter interval; nothing happens when
   nobody is looking. Several open panels share one schedule.
+- **Entities** — the scan intervals, the parallel-scan switch, a "Scan now" button and a "Last scan" timestamp sensor
+  (with router, end-device and link counts) belong to a device "Zigbee2MQTT map", so automations can use them too.
 - **Device pictures** from zigbee2mqtt.io (optional), stale-device rings (not seen for 24 h), one-sided links on
   request, routes on request, label search, PNG export.
 
-Everything the panel does goes through Home Assistant's own websocket (`mqtt.publish` and `mqtt/subscribe`): no
-extra integration, no access to the Zigbee2MQTT frontend, nothing leaves your network except the optional device
-pictures.
+Everything stays local: the integration talks to Zigbee2MQTT over your MQTT broker, the panel talks to the integration
+over Home Assistant's websocket. The only thing that leaves your network is the optional device pictures.
 
 ## Requirements
 
-- Home Assistant with the **MQTT integration** connected to the same broker as Zigbee2MQTT.
-- An **admin user**: the websocket command `mqtt/subscribe` is admin-only, the panel is registered with
-  `require_admin: true`.
-- Zigbee2MQTT 2.x (tested with 2.14 on an EmberZNet coordinator). Any adapter works; the map comes from
+- Home Assistant 2025.1 or newer with the **MQTT integration** connected to the broker Zigbee2MQTT uses.
+- Zigbee2MQTT 2.x (tested with 2.14 on an EmberZNet coordinator). Any adapter; the map comes from
   `bridge/request/networkmap`.
 - [HACS](https://hacs.xyz).
 
 ## Install
 
 1. HACS → three-dot menu (top right) → **Custom repositories** → paste `https://github.com/omcular/zigbee2mqtt-map-panel`,
-   type **Dashboard**, Add.
-2. Still in HACS, search for **Zigbee2MQTT map panel**, open it, **Download**. Pick the latest release when asked.
-   (HACS also registers the file as a dashboard resource. That is harmless and can be removed.)
-3. Copy [`packages/zigbee_map_panel.yaml`](packages/zigbee_map_panel.yaml) to `/config/packages/`. If you have never used
-   packages, add once to `configuration.yaml`:
+   type **Integration**, Add.
+2. Still in HACS, search for **Zigbee2MQTT map**, open it, **Download**. Restart Home Assistant when HACS asks.
+3. Settings → Devices & services → **Add integration** → "Zigbee2MQTT map". The dialog shows the Zigbee2MQTT instances
+   found on your broker and pre-fills the base topic; confirm it.
+4. "Zigbee map" appears in the sidebar. Open it, press **pull fresh map**, then set the two intervals in **options**
+   (2 h background / 10 min while viewing is a sensible start). A scan of a 25-router mesh takes about 75 s with
+   Zigbee2MQTT's own sequential scan.
 
-   ```yaml
-   homeassistant:
-     packages: !include_dir_named packages
-   ```
-
-4. **Restart** Home Assistant (a `panel_custom` entry needs a full restart). "Zigbee map" appears in the sidebar.
-5. Open it, press **pull fresh map**, then set the two intervals in **options** (2 h background / 10 min while viewing
-   is a sensible start). A scan of a 25-router mesh takes about 75 s with Zigbee2MQTT's own sequential scan.
-
-Nothing to edit for a single Zigbee2MQTT instance: the package learns the base topic from the retained
-`<topic>/bridge/state` message that Zigbee2MQTT publishes (only an `online` one counts, stale retained `offline`
-states from old installs are ignored) and keeps it in `input_text.zigbee_map_base_topic`. The panel shows the topic in
-use at the bottom of its options menu. With several instances, set that helper to the one you want and delete the
-"learn the base topic" automation.
-
-The package creates five helpers (`input_text.zigbee_map_base_topic`, `input_number.zigbee_map_scan_interval`,
-`input_number.zigbee_map_live_interval`, `input_datetime.zigbee_map_last_request`, `input_boolean.zigbee_map_fast_scan`)
-and three automations (learn the base topic, request the map on schedule, keep the latest answer retained on
-`zigbee_map/latest`).
+The integration finds the base topic through the retained `<topic>/bridge/state` message Zigbee2MQTT publishes; only
+an `online` one counts, stale `offline` states from old installs are ignored. With several instances, pick one in the
+dialog. The base topic, the sidebar title and whether the panel is for administrators only can be changed later under
+**Configure** on the integration's card.
 
 ## Update
 
-HACS checks this repository on its own schedule, so a fresh release can take a few hours to show up. To see it at
-once: open the panel's page in HACS, three-dot menu → **Update information**, then reload the browser tab (the page
-keeps the old data until it is rebuilt). **Redownload** also lists every release in a dropdown.
-
-After HACS installs a new version, bump the `?v=` in `module_url` to the new version in the package file and restart
-Home Assistant. HACS serves `/hacsfiles/` with a 31-day cache header and a custom panel is loaded once per page, so
-without the bump a browser keeps the old module for weeks. Hard-reload the tab afterwards (Ctrl-Shift-R). Compare the
-package file with the new release's copy as well: a release may add a helper or an automation.
+HACS → Zigbee2MQTT map → Update, then restart Home Assistant. Browsers pick up the new panel on their own: the module
+URL carries the file's hash. If HACS does not show the new version yet, three-dot menu → **Update information** and
+reload the page.
 
 ## Faster scans (optional)
 
@@ -89,7 +69,8 @@ and its README from the PR branch:
 [`networkmap_fast.mjs`](https://github.com/omcular/zigbee2mqtt-user-extensions/blob/networkmap-fast/unstable/networkmap_fast/networkmap_fast.mjs)
 · [README](https://github.com/omcular/zigbee2mqtt-user-extensions/blob/networkmap-fast/unstable/networkmap_fast/README.md).
 Load it in Zigbee2MQTT (Settings → Dev console → External extensions, needs `advanced.enable_external_js: true`) and
-switch on **parallel scan** in the panel's options. Without it, leave the toggle off; the panel works the same, only slower.
+switch on **parallel scan** in the panel's options (or the "Parallel scan" switch entity). Without it the panel works
+the same, only slower.
 
 ## Reading the map
 
@@ -101,13 +82,16 @@ switch on **parallel scan** in the panel's options. Without it, leave the toggle
 
 ## Troubleshooting
 
-- **"admin user needed for mqtt/subscribe"** — log in as an administrator.
-- **"timeout: no response in 10 min"** — the base topic is wrong (check `input_text.zigbee_map_base_topic` and the
-  "Z2M topic" shown in options), Zigbee2MQTT is not connected to the broker Home Assistant uses, or a scan never finishes (a router hanging in table paging; `networkmap_fast` has a breaker for that).
-- **Panel shows an old version after an update** — bump `?v=` and restart, see *Update*.
-- **Nothing in the sidebar** — `panel_custom` is loaded at start-up only; check the HA log for the package.
+- **"Zigbee2MQTT: no answer within 10 min"** — the base topic is wrong (Configure on the integration's card shows it),
+  Zigbee2MQTT is not connected to the broker Home Assistant uses, or a scan never finishes (a router hanging in table
+  paging; `networkmap_fast` has a breaker for that).
+- **"scan request failed … administrators only"** — scans are limited to administrator accounts; the map itself is
+  shown to everyone the panel is visible to.
+- **"The MQTT integration is not set up"** in the dialog — add the MQTT integration first.
+- **Nothing in the sidebar** — the panel appears when the integration is set up; check Settings → Devices & services
+  for an error on the card and the Home Assistant log for `zigbee2mqtt_map`.
 
 ## Credits
 
-Graph layout by [D3.js](https://d3js.org) (ISC licence, shipped unmodified as `dist/d3.v7.min.js`, see THIRD_PARTY.md). Device pictures by
+Graph layout by [D3.js](https://d3js.org) (ISC licence, shipped unmodified, see THIRD_PARTY.md). Device pictures by
 [zigbee2mqtt.io](https://www.zigbee2mqtt.io).

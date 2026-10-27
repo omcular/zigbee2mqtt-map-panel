@@ -1,12 +1,13 @@
-/* zigbee2mqtt-map-panel: Zigbee2MQTT's network map as a Home Assistant sidebar panel (panel_custom).
- * Shows the last raw network map that Home Assistant keeps retained on <store_topic> (see packages/zigbee_map_panel.yaml:
- * a background scan automation stores every answer there), can request a fresh scan over HA's own websocket
- * (mqtt.publish + mqtt/subscribe) and renders the map as a d3 force graph with pinnable nodes.
- * Admin user required: the websocket command mqtt/subscribe is admin-only.
- * Files: zigbee2mqtt-map-panel.js + d3.v7.min.js (loaded from next to this file); config: packages/zigbee_map_panel.yaml.
+/* zigbee2mqtt-map-panel: Zigbee2MQTT's network map as a Home Assistant sidebar panel.
+ * Served and registered by the zigbee2mqtt_map integration (custom_components/zigbee2mqtt_map), which talks to Zigbee2MQTT
+ * over MQTT, keeps the last map and runs the background schedule. This file only renders: it subscribes to the
+ * integration's websocket events (status, map, progress, error) and asks for scans with one websocket command.
+ * d3.v7.min.js is loaded from next to this file.
  */
-const VERSION = '1.1.0';
+const VERSION = '2.0.0';
 console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
+const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan' };
+const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
 const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1' };
@@ -180,9 +181,9 @@ const BAR = `
     <label title="on: link colour runs continuously from red (0) through orange (50) to green (80 and up) · off: three fixed colours"><input type="checkbox" id="smooth" checked> smooth link colours</label>
     <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> routes on pull</label>
     <div class="sep"></div>
-    <label title="Home Assistant scans on its own at this interval, whether anyone is looking or not (input_number.zigbee_map_scan_interval). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
-    <label title="while this panel is open and visible it requests a scan at this interval (input_number.zigbee_map_live_interval). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
-    <label title="use the networkmap_fast external extension (2 routers at a time, the measured sweet spot here) instead of Zigbee2MQTT's one-by-one scan; needs the extension loaded in Z2M"><input type="checkbox" id="fastScan"> parallel scan (extension)</label>
+    <label title="the integration scans on its own at this interval, whether anyone is looking or not (number entity &quot;Background scan interval&quot;). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
+    <label title="while this panel is open and visible it requests a scan at this interval (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
+    <label title="use the networkmap_fast external extension (2 routers at a time, the measured sweet spot here) instead of Zigbee2MQTT's one-by-one scan; needs the extension loaded in Z2M (switch entity &quot;Parallel scan&quot;)"><input type="checkbox" id="fastScan"> parallel scan (extension)</label>
     <div id="schedNote" class="note"></div>
     <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="1" step="0.05"> <span id="springV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
@@ -211,9 +212,9 @@ const BAR = `
     </dl>
     <h4>Data</h4>
     <dl>
-      <dt>background scan</dt><dd>Home Assistant asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes</dd>
-      <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule through the last-request time kept in HA</dd>
-      <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the requests go to. The package learns it from the retained <code>&lt;topic&gt;/bridge/state</code> message (only an "online" one counts) and keeps it in input_text.zigbee_map_base_topic; set it there by hand if you run several Zigbee2MQTT instances, or pin it with base_topic in the panel's config</dd>
+      <dt>background scan</dt><dd>the integration asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes. The same three settings exist as entities of the "Zigbee2MQTT map" device, usable in automations</dd>
+      <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule: the integration runs one scan at a time and remembers the last request</dd>
+      <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
       <dt>pull fresh map</dt><dd>starts a scan now. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" sends the request to the networkmap_fast extension's own topic (2 routers at a time; more loses routers behind weak links). With the extension's default config the normal topic is served by it too, so the toggle only matters if that takeover is off</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Bad links are easiest found by colour with the slider at off</dd>
@@ -237,12 +238,12 @@ class ZigbeeMapPanel extends HTMLElement {
   set narrow(n) { this._narrow = n; const mb = this.shadowRoot.querySelector('ha-menu-button'); if (mb) mb.narrow = n; }
   set panel(p) { this._panel = p; }
   // panel config wins; otherwise the helper the package fills from the retained <base>/bridge/state message; last resort the Z2M default
-  get baseTopic() { const c = this._panel?.config?.base_topic; if (c) return c; const st = this._hass?.states?.[this.E.base]?.state; return st && !['unknown', 'unavailable'].includes(st) ? st : 'zigbee2mqtt'; }
-  get storeTopic() { return this._panel?.config?.store_topic || 'zigbee_map/latest'; }
-  get E() { const c = this._panel?.config || {}; return { bg: c.scan_interval_entity || 'input_number.zigbee_map_scan_interval', live: c.live_interval_entity || 'input_number.zigbee_map_live_interval', last: c.last_request_entity || 'input_datetime.zigbee_map_last_request', fast: c.fast_scan_entity || 'input_boolean.zigbee_map_fast_scan', base: c.base_topic_entity || 'input_text.zigbee_map_base_topic' }; }
-  get fast() { return this._hass?.states?.[this.E.fast]?.state === 'on'; }
-  num(eid) { const v = parseFloat(this._hass?.states?.[eid]?.state); return Number.isFinite(v) ? v : null; }
-  lastRequestMs() { const st = this._hass?.states?.[this.E.last]?.state; const t = st ? Date.parse(st.replace(' ', 'T')) : NaN; return Number.isFinite(t) ? t : 0; }
+  get S() { return this._status || {}; }           // last status event from the integration
+  get E() { return this.S.entities || {}; }         // entity ids of the settings entities: bg, live, fast
+  get baseTopic() { return this.S.base_topic || this._panel?.config?.base_topic || '?'; }
+  get fast() { return !!this.S.settings?.[SET.parallel]; }
+  setting(k) { const v = parseFloat(this.S.settings?.[k]); return Number.isFinite(v) ? v : null; }
+  lastRequestMs() { const t = this.S.last_request ? Date.parse(this.S.last_request) : NaN; return Number.isFinite(t) ? t : 0; }
 
   connectedCallback() { if (!this._built) { this._built = true; this.build(); } else { this.watchStore(); if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000); } }   // HA may re-attach the same element
 
@@ -264,73 +265,72 @@ class ZigbeeMapPanel extends HTMLElement {
     new ResizeObserver(() => this.onResize()).observe(this.$('canvas'));
     this.onResize();
     for (const [id, key] of [['bgInt', 'bg'], ['liveInt', 'live']]) this.$(id).onchange = () => {
-      const v = parseFloat(this.$(id).value); if (!Number.isFinite(v) || !this._hass) return;
-      this._hass.callService('input_number', 'set_value', { entity_id: this.E[key], value: v }).catch(e => { this.$('schedNote').textContent = 'could not set ' + this.E[key] + ': ' + (e.message || e); });
+      const v = parseFloat(this.$(id).value); if (!Number.isFinite(v) || !this._hass || !this.E[key]) return;
+      this._hass.callService('number', 'set_value', { entity_id: this.E[key], value: v }).catch(e => { this.$('schedNote').textContent = 'could not set ' + this.E[key] + ': ' + (e.message || e); });
     };
-    this.$('fastScan').onchange = () => { if (!this._hass) return; this._hass.callService('input_boolean', this.$('fastScan').checked ? 'turn_on' : 'turn_off', { entity_id: this.E.fast }).catch(() => {}); };
+    this.$('fastScan').onchange = () => { if (!this._hass || !this.E.fast) return; this._hass.callService('switch', this.$('fastScan').checked ? 'turn_on' : 'turn_off', { entity_id: this.E.fast }).catch(() => {}); };
     this.syncSched();
     if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000);
   }
   // mirror the HA interval entities into the options menu (they may be edited anywhere in HA)
   syncSched() {
     if (!this.$ || !this.$('bgInt')) return;
-    const bg = this.num(this.E.bg), live = this.num(this.E.live);
-    const fs = this._hass?.states?.[this.E.fast]; this.$('fastScan').disabled = !fs; this.$('fastScan').checked = !!fs && fs.state === 'on';
-    for (const [id, v] of [['bgInt', bg], ['liveInt', live]]) { const el = this.$(id); if (this.shadowRoot.activeElement !== el) { el.value = v == null ? '' : v; el.disabled = v == null; } }
-    this.$('schedNote').textContent = (bg == null || live == null) ? 'interval entities not found in HA: is the zigbee_map_panel package installed?' :
+    const bg = this.setting(SET.bg), live = this.setting(SET.live), have = !!this._status;
+    this.$('fastScan').disabled = !have; this.$('fastScan').checked = this.fast;
+    for (const [id, v] of [['bgInt', bg], ['liveInt', live]]) { const el = this.$(id); if (this.shadowRoot.activeElement !== el) { el.value = v == null ? '' : v; el.disabled = !have; } }
+    this.$('schedNote').textContent = !have ? 'waiting for the Zigbee2MQTT map integration…' :
       (bg > 0 ? `background: every ${bg} h` : 'background: off') + ' · ' + (live > 0 ? `viewing: every ${live} min` : 'viewing: off') + (this.fast ? ' · parallel' : '') + ` · Z2M topic: ${this.baseTopic}`;
   }
   // while the panel is open and visible: request a scan once the live interval has passed since the last request anywhere
   liveTick() {
-    if (!this.isConnected || document.visibilityState !== 'visible' || !this._hass || this._pulling) return;
-    const live = this.num(this.E.live); if (!(live > 0)) return;
+    if (!this.isConnected || document.visibilityState !== 'visible' || !this._hass || this._scan) return;
+    const live = this.setting(SET.live); if (!(live > 0)) return;
     const last = Math.max(this.lastRequestMs(), this.data ? (Date.parse(this.data.fetchedAt) || 0) : 0);
-    if (Date.now() - last >= live * 60000) this.pull(true);
+    if (Date.now() - last >= live * 60000) this.pull();
   }
   onResize() { const bar = this.$('bar'); if (bar) { const h = bar.offsetHeight + 'px'; if (this._barh !== h) { this._barh = h; this.style.setProperty('--barh', h); } } if (this.sim && this.data) { const c = this.$('canvas'), cx = c.clientWidth / 2, cy = c.clientHeight / 2; this.sim.force('center', d3.forceCenter(cx, cy)); this.applyGravity(); } }
 
-  // retained copy kept by HA (zigbee_map_store automation): arrives immediately on subscribe, and after every scan
+  // live link to the integration: a status event first, then the stored map, then every new map, progress count and error
   async watchStore() {
     const h = this._hass; if (!h || this._storeSub) return;
-    try {
-      this._storeSub = await h.connection.subscribeMessage(msg => {
-        let r; try { r = JSON.parse(msg.payload); } catch (e) { return; }
-        if (!r?.map?.nodes) return;
-        if (this.data && this.data.fetchedAt === r.fetchedAt) return;
-        lsSet(LS.map, { fetchedAt: r.fetchedAt, map: r.map });
-        this.setMap(r.map, r.fetchedAt);
-        if (this._pulling) { this._pulling(); this._pulling = null; }
-      }, { type: 'mqtt/subscribe', topic: this.storeTopic });
-    } catch (e) { this.$('status').textContent = 'cannot subscribe to ' + this.storeTopic + ': ' + (e.message || JSON.stringify(e)); }
+    try { this._storeSub = await h.connection.subscribeMessage(ev => this.onEvent(ev), { type: WS.subscribe }); }
+    catch (e) { this.$('status').textContent = 'cannot reach the Zigbee2MQTT map integration: ' + (e.message || JSON.stringify(e)); }
   }
+  onEvent(ev) {
+    const st = this.$('status');
+    switch (ev.type) {
+      case 'status':
+        this._status = ev; this.syncSched();
+        if (ev.scanning && !this._scan) this.beginScan(ev.scanning); else if (!ev.scanning && this._scan) this.endScan();
+        break;
+      case 'scan_started': if (!this._scan) this.beginScan(ev.kind); break;
+      case 'progress': if (this._scan) this._scan.progress = ` · ${ev.done}/${ev.total} routers${ev.failed ? `, ${ev.failed} not answering` : ''}`; break;
+      case 'map':
+        if (this.data && this.data.fetchedAt === ev.fetchedAt) break;
+        this.endScan();
+        lsSet(LS.map, { fetchedAt: ev.fetchedAt, map: ev.map });
+        this.setMap(ev.map, ev.fetchedAt);
+        if (ev.duration) st.append(` · scan took ${ev.duration} s`);   // append, not textContent +=: that would flatten the clickable mesh numbers into plain text
+        break;
+      case 'error': this.endScan(); st.textContent = 'Zigbee2MQTT: ' + ev.message; break;
+    }
+  }
+  beginScan(kind) {
+    const st = this.$('status'), t0 = Date.now(), scan = this._scan = { progress: '' };
+    this.$('pull').disabled = true;
+    scan.tick = setInterval(() => { st.textContent = `scan running (${kind})… ${Math.round((Date.now() - t0) / 1000)} s${scan.progress} (leaving the page is fine, the result is kept by Home Assistant)`; }, 1000);
+  }
+  endScan() { if (!this._scan) return; clearInterval(this._scan.tick); this._scan = null; this.$('pull').disabled = false; }
   disconnectedCallback() { clearInterval(this._liveT); this._liveT = null; this.savePos(); this.saveView(); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
 
-  async pull(auto = false) {
-    const h = this._hass; if (!h) return;
-    if (h.states?.[this.E.last]) { const d = new Date(), pad = n => String(n).padStart(2, '0'); h.callService('input_datetime', 'set_datetime', { entity_id: this.E.last, datetime: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` }).catch(() => {}); }
-    const st = this.$('status'), btn = this.$('pull');
-    const kind = this.fast ? 'networkmap_fast' : 'networkmap';
-    btn.disabled = true; st.textContent = `requesting ${kind} on ${this.baseTopic}…`;
-    const t0 = Date.now(); let unsub = null, progSub = null, progress = '';
-    const tick = setInterval(() => { st.textContent = `${auto ? 'viewing scan' : 'scan'} running… ${Math.round((Date.now() - t0) / 1000)} s${progress} (leaving the page is fine, the result is kept by HA)`; }, 1000);
-    const done = () => { clearInterval(tick); clearTimeout(to); btn.disabled = false; this._pulling = null; for (const u of [unsub, progSub]) if (u) { try { u(); } catch (e) {} } unsub = progSub = null; };
-    const to = setTimeout(() => { done(); st.textContent = 'timeout: no response in 10 min (Z2M busy? base topic right? the background scan will still land here when it finishes)'; }, 600000);
-    this._pulling = done;   // the retained store topic may deliver the result first
+  // ask the integration for a scan; the result, progress and errors arrive as events on the subscription
+  async pull() {
+    const h = this._hass; if (!h || this._scan) return;
+    const st = this.$('status'); st.textContent = `requesting a scan on ${this.baseTopic}…`;
     try {
-      // progress comes from the networkmap_fast extension; with its default config it also answers the normal topic, so always listen
-      progSub = await h.connection.subscribeMessage(msg => { try { const p = JSON.parse(msg.payload); progress = ` · ${p.done}/${p.total} routers${p.failed ? `, ${p.failed} not answering` : ''}`; } catch (e) {} },
-        { type: 'mqtt/subscribe', topic: `${this.baseTopic}/bridge/networkmap_fast/progress` });
-      unsub = await h.connection.subscribeMessage(msg => {
-        let r; try { r = JSON.parse(msg.payload); } catch (e) { return; }
-        if (r.status !== 'ok') { done(); st.textContent = 'Z2M error: ' + (r.error || 'unknown'); return; }
-        done();
-        const fetchedAt = new Date().toISOString();
-        lsSet(LS.map, { fetchedAt, map: r.data.value });
-        this.setMap(r.data.value, fetchedAt);
-        if (r.data.duration) st.append(` · scan took ${r.data.duration} s`);   // append, not textContent +=: that would flatten the clickable mesh numbers into plain text
-      }, { type: 'mqtt/subscribe', topic: `${this.baseTopic}/bridge/response/${kind}` });
-      await h.callService('mqtt', 'publish', { topic: `${this.baseTopic}/bridge/request/${kind}`, payload: JSON.stringify({ type: 'raw', routes: !!this.$('routes').checked }) });
-    } catch (e) { done(); st.textContent = 'failed: ' + (e.message || JSON.stringify(e)) + ' (admin user needed for mqtt/subscribe)'; }
+      const r = await h.callWS({ type: WS.scan, routes: !!this.$('routes').checked });
+      if (!r.started && !this._scan) st.textContent = 'a scan is already running';
+    } catch (e) { this.endScan(); st.textContent = 'scan request failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''); }
   }
 
   setMap(map, fetchedAt) {

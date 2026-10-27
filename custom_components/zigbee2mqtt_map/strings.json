@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Zigbee2MQTT map",
+        "description": "Zigbee2MQTT instances found on the broker: {detected}. The base topic is the first part of every Zigbee2MQTT topic (default zigbee2mqtt).",
+        "data": {
+          "base_topic": "Zigbee2MQTT base topic"
+        }
+      }
+    },
+    "error": {
+      "invalid_topic": "A base topic cannot be empty or contain # or +."
+    },
+    "abort": {
+      "mqtt_missing": "The MQTT integration is not set up. Add it first, connected to the broker Zigbee2MQTT uses.",
+      "single_instance_allowed": "Only one Zigbee2MQTT map can be set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Zigbee2MQTT map",
+        "description": "Saving reloads the integration; open panels need a page reload.",
+        "data": {
+          "base_topic": "Zigbee2MQTT base topic",
+          "sidebar_title": "Sidebar title",
+          "require_admin": "Administrators only"
+        }
+      }
+    },
+    "error": {
+      "invalid_topic": "A base topic cannot be empty or contain # or +."
+    }
+  },
+  "entity": {
+    "number": {
+      "background_hours": { "name": "Background scan interval" },
+      "viewing_minutes": { "name": "Scan interval while viewing" }
+    },
+    "switch": {
+      "parallel": { "name": "Parallel scan (networkmap_fast)" }
+    },
+    "button": {
+      "scan_now": { "name": "Scan now" }
+    },
+    "sensor": {
+      "last_scan": { "name": "Last scan" }
+    }
+  }
+}
