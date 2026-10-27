@@ -1,11 +1,11 @@
-# Zigbee2MQTT map panel — Home Assistant package.
+# Zigbee2MQTT map panel — Home Assistant package (v1.1).
 # Copy this file to /config/packages/ (with `homeassistant: packages: !include_dir_named packages` in configuration.yaml)
 # and restart Home Assistant. panel_custom and a changed ?v= need a full restart, not a reload.
 #
-# Edit before use:
-#   base_topic            your Zigbee2MQTT base topic (default zigbee2mqtt); it appears THREE times below (panel config,
-#                         the scan automation's publish topic, the store automation's trigger topics)
-#   module_url ?v=        bump to the installed version after every update so browsers drop the cached module
+# Nothing to edit for a single Zigbee2MQTT instance: the base topic is learned from the retained <topic>/bridge/state
+# message and kept in input_text.zigbee_map_base_topic (an "online" one; stale retained "offline" states are ignored).
+# Several Zigbee2MQTT instances: set that helper to the one you want and remove the "learn the base topic" automation.
+# After a HACS update: bump the ?v= in module_url to the installed version, restart, hard-reload the browser tab.
 #
 # How it works: a background scan (interval below) asks Zigbee2MQTT for the raw network map (routes off: routing-table
 # reads add a 15 s timeout per router that does not answer). Z2M's answer is re-published RETAINED on zigbee_map/latest,
@@ -17,23 +17,33 @@ panel_custom:
     sidebar_title: Zigbee map
     sidebar_icon: mdi:zigbee
     url_path: zigbee-map
-    module_url: /hacsfiles/zigbee2mqtt-map-panel/zigbee2mqtt-map-panel.js?v=1.0.0
+    module_url: /hacsfiles/zigbee2mqtt-map-panel/zigbee2mqtt-map-panel.js?v=1.1.0
     require_admin: true
     config:
-      base_topic: zigbee2mqtt
       store_topic: zigbee_map/latest
-      fast_scan_entity: input_boolean.zigbee_map_fast_scan
-      # optional, if you rename the helpers below:
+      # base_topic: zigbee2mqtt        # pins the topic for the panel only; normally left to the helper below
+      # entity names, only if you rename the helpers:
+      # base_topic_entity: input_text.zigbee_map_base_topic
       # scan_interval_entity: input_number.zigbee_map_scan_interval
       # live_interval_entity: input_number.zigbee_map_live_interval
       # last_request_entity: input_datetime.zigbee_map_last_request
+      # fast_scan_entity: input_boolean.zigbee_map_fast_scan
 
-# Scan scheduling. All three are HA entities (editable in the panel's options menu or anywhere in HA):
+# Helpers (all editable in the panel's options menu or anywhere in HA):
+#   input_text.zigbee_map_base_topic       Zigbee2MQTT base topic, learned automatically (see above)
 #   input_number.zigbee_map_scan_interval  background scan every N hours (0 = off)
 #   input_number.zigbee_map_live_interval  while the panel is open and visible, scan every N minutes (0 = off); the panel
 #                                          itself issues these requests, so nothing happens when nobody is looking
 #   input_datetime.zigbee_map_last_request time of the last scan request (set by the automation and by the panel) — the
 #                                          guard that keeps several open panels and the schedule from piling up scans
+#   input_boolean.zigbee_map_fast_scan     on: requests go to bridge/request/networkmap_fast (the networkmap_fast external
+#                                          extension, see the README); off: Zigbee2MQTT's own sequential scan
+input_text:
+  zigbee_map_base_topic:
+    name: "Zigbee map - Zigbee2MQTT base topic"
+    icon: mdi:zigbee
+    max: 100
+
 input_number:
   zigbee_map_scan_interval:
     name: "Zigbee map - background scan every"
@@ -56,8 +66,6 @@ input_boolean:
   zigbee_map_fast_scan:
     name: "Zigbee map - parallel scan (networkmap_fast extension)"
     icon: mdi:fast-forward
-    # on: requests go to bridge/request/networkmap_fast (the networkmap_fast external extension, see the README);
-    # off: Zigbee2MQTT's stock sequential scan. Leave it off unless the extension is loaded.
 
 input_datetime:
   zigbee_map_last_request:
@@ -67,6 +75,27 @@ input_datetime:
     has_time: true
 
 automation:
+  - id: zigbee_map_learn_base_topic
+    alias: "Zigbee map - learn the base topic"
+    description: "Zigbee2MQTT keeps <base_topic>/bridge/state retained; an 'online' one tells us the base topic. Delete this automation and set the helper by hand if you run several instances."
+    triggers:
+      - trigger: mqtt
+        topic: "+/bridge/state"
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set p = trigger.payload_json if trigger.payload_json is mapping else {} %}
+          {{ (p.state | default(trigger.payload)) == 'online' }}
+      - condition: template
+        value_template: "{{ trigger.topic.split('/') | length == 3 and trigger.topic.split('/')[0] != states('input_text.zigbee_map_base_topic') }}"
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.zigbee_map_base_topic
+        data:
+          value: "{{ trigger.topic.split('/')[0] }}"
+    mode: queued
+
   - id: zigbee_map_scan
     alias: "Zigbee map - background network scan"
     description: "Every 5 min: if the background interval is > 0 and that much time has passed since the last request, ask Z2M for the raw map."
@@ -78,7 +107,8 @@ automation:
         value_template: >-
           {% set h = states('input_number.zigbee_map_scan_interval') | float(0) %}
           {% set last = states('input_datetime.zigbee_map_last_request') | as_datetime(none) %}
-          {{ h > 0 and (last is none or (now() - last.replace(tzinfo=now().tzinfo)).total_seconds() >= h * 3600 - 90) }}
+          {% set base = states('input_text.zigbee_map_base_topic') %}
+          {{ base not in ['', 'unknown', 'unavailable'] and h > 0 and (last is none or (now() - last.replace(tzinfo=now().tzinfo)).total_seconds() >= h * 3600 - 90) }}
     actions:
       - action: input_datetime.set_datetime
         target:
@@ -88,18 +118,18 @@ automation:
       - action: mqtt.publish
         data:
           topic: >-
-            zigbee2mqtt/bridge/request/{{ 'networkmap_fast' if is_state('input_boolean.zigbee_map_fast_scan', 'on') else 'networkmap' }}
+            {{ states('input_text.zigbee_map_base_topic') }}/bridge/request/{{ 'networkmap_fast' if is_state('input_boolean.zigbee_map_fast_scan', 'on') else 'networkmap' }}
           payload: '{"type": "raw", "routes": false}'
     mode: single
 
   - id: zigbee_map_store
     alias: "Zigbee map - keep the latest scan"
-    description: "Re-publishes Z2M's network-map answer retained on zigbee_map/latest with a timestamp."
+    description: "Re-publishes Z2M's network-map answer retained on zigbee_map/latest with a timestamp. Matches any base topic."
     triggers:
       - trigger: mqtt
-        topic: zigbee2mqtt/bridge/response/networkmap
+        topic: "+/bridge/response/networkmap"
       - trigger: mqtt
-        topic: zigbee2mqtt/bridge/response/networkmap_fast
+        topic: "+/bridge/response/networkmap_fast"
     conditions:
       - condition: template
         value_template: "{{ trigger.payload_json.status == 'ok' }}"

@@ -5,7 +5,7 @@
  * Admin user required: the websocket command mqtt/subscribe is admin-only.
  * Files: zigbee2mqtt-map-panel.js + d3.v7.min.js (loaded from next to this file); config: packages/zigbee_map_panel.yaml.
  */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
@@ -129,6 +129,7 @@ const STYLE = `
   details#help dd { margin:0; color:var(--muted); }
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
+  details#help code { font-size:11px; }
   details.dd .menu input[type=range] { width:120px; }
   #legend { position:absolute; left:10px; bottom:10px; background:var(--panel); border:1px solid var(--divider-color,#333); border-radius:6px; padding:6px 9px; font-size:11px; color:var(--muted); max-width:min(900px,calc(100% - 40px)); }
   #legend span.sw { display:inline-block; width:20px; height:3px; vertical-align:middle; margin-right:5px; }
@@ -212,6 +213,7 @@ const BAR = `
     <dl>
       <dt>background scan</dt><dd>Home Assistant asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule through the last-request time kept in HA</dd>
+      <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the requests go to. The package learns it from the retained <code>&lt;topic&gt;/bridge/state</code> message (only an "online" one counts) and keeps it in input_text.zigbee_map_base_topic; set it there by hand if you run several Zigbee2MQTT instances, or pin it with base_topic in the panel's config</dd>
       <dt>pull fresh map</dt><dd>starts a scan now. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" sends the request to the networkmap_fast extension's own topic (2 routers at a time; more loses routers behind weak links). With the extension's default config the normal topic is served by it too, so the toggle only matters if that takeover is off</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Bad links are easiest found by colour with the slider at off</dd>
@@ -234,9 +236,10 @@ class ZigbeeMapPanel extends HTMLElement {
   get hass() { return this._hass; }
   set narrow(n) { this._narrow = n; const mb = this.shadowRoot.querySelector('ha-menu-button'); if (mb) mb.narrow = n; }
   set panel(p) { this._panel = p; }
-  get baseTopic() { return this._panel?.config?.base_topic || 'zigbee2mqtt'; }
+  // panel config wins; otherwise the helper the package fills from the retained <base>/bridge/state message; last resort the Z2M default
+  get baseTopic() { const c = this._panel?.config?.base_topic; if (c) return c; const st = this._hass?.states?.[this.E.base]?.state; return st && !['unknown', 'unavailable'].includes(st) ? st : 'zigbee2mqtt'; }
   get storeTopic() { return this._panel?.config?.store_topic || 'zigbee_map/latest'; }
-  get E() { const c = this._panel?.config || {}; return { bg: c.scan_interval_entity || 'input_number.zigbee_map_scan_interval', live: c.live_interval_entity || 'input_number.zigbee_map_live_interval', last: c.last_request_entity || 'input_datetime.zigbee_map_last_request', fast: c.fast_scan_entity || 'input_boolean.zigbee_map_fast_scan' }; }
+  get E() { const c = this._panel?.config || {}; return { bg: c.scan_interval_entity || 'input_number.zigbee_map_scan_interval', live: c.live_interval_entity || 'input_number.zigbee_map_live_interval', last: c.last_request_entity || 'input_datetime.zigbee_map_last_request', fast: c.fast_scan_entity || 'input_boolean.zigbee_map_fast_scan', base: c.base_topic_entity || 'input_text.zigbee_map_base_topic' }; }
   get fast() { return this._hass?.states?.[this.E.fast]?.state === 'on'; }
   num(eid) { const v = parseFloat(this._hass?.states?.[eid]?.state); return Number.isFinite(v) ? v : null; }
   lastRequestMs() { const st = this._hass?.states?.[this.E.last]?.state; const t = st ? Date.parse(st.replace(' ', 'T')) : NaN; return Number.isFinite(t) ? t : 0; }
@@ -275,7 +278,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const fs = this._hass?.states?.[this.E.fast]; this.$('fastScan').disabled = !fs; this.$('fastScan').checked = !!fs && fs.state === 'on';
     for (const [id, v] of [['bgInt', bg], ['liveInt', live]]) { const el = this.$(id); if (this.shadowRoot.activeElement !== el) { el.value = v == null ? '' : v; el.disabled = v == null; } }
     this.$('schedNote').textContent = (bg == null || live == null) ? 'interval entities not found in HA: is the zigbee_map_panel package installed?' :
-      (bg > 0 ? `background: every ${bg} h` : 'background: off') + ' · ' + (live > 0 ? `viewing: every ${live} min` : 'viewing: off') + (this.fast ? ' · parallel' : '');
+      (bg > 0 ? `background: every ${bg} h` : 'background: off') + ' · ' + (live > 0 ? `viewing: every ${live} min` : 'viewing: off') + (this.fast ? ' · parallel' : '') + ` · Z2M topic: ${this.baseTopic}`;
   }
   // while the panel is open and visible: request a scan once the live interval has passed since the last request anywhere
   liveTick() {

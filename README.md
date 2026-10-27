@@ -40,24 +40,39 @@ pictures.
 
 ## Install
 
-1. HACS → three-dot menu → **Custom repositories** → add `https://github.com/omcular/zigbee2mqtt-map-panel`, type
-   **Dashboard** → install. (HACS also adds the file as a dashboard resource; that is harmless and can be removed.)
-2. Copy [`packages/zigbee_map_panel.yaml`](packages/zigbee_map_panel.yaml) to `/config/packages/` (enable packages
-   once with `homeassistant: packages: !include_dir_named packages` in `configuration.yaml`). Set your Zigbee2MQTT base
-   topic in the three places marked at the top of the file if it is not `zigbee2mqtt`.
-3. **Restart** Home Assistant (a `panel_custom` entry needs a full restart). "Zigbee map" appears in the sidebar.
-4. Open it, press **pull fresh map**, then set the two intervals in **options** (2 h background / 10 min while viewing
+1. HACS → three-dot menu (top right) → **Custom repositories** → paste `https://github.com/omcular/zigbee2mqtt-map-panel`,
+   type **Dashboard**, Add.
+2. Still in HACS, search for **Zigbee2MQTT map panel**, open it, **Download**. Pick the latest release when asked.
+   (HACS also registers the file as a dashboard resource. That is harmless and can be removed.)
+3. Copy [`packages/zigbee_map_panel.yaml`](packages/zigbee_map_panel.yaml) to `/config/packages/`. If you have never used
+   packages, add once to `configuration.yaml`:
+
+   ```yaml
+   homeassistant:
+     packages: !include_dir_named packages
+   ```
+
+4. **Restart** Home Assistant (a `panel_custom` entry needs a full restart). "Zigbee map" appears in the sidebar.
+5. Open it, press **pull fresh map**, then set the two intervals in **options** (2 h background / 10 min while viewing
    is a sensible start). A scan of a 25-router mesh takes about 75 s with Zigbee2MQTT's own sequential scan.
 
-The package creates three helpers (`input_number.zigbee_map_scan_interval`, `input_number.zigbee_map_live_interval`,
-`input_datetime.zigbee_map_last_request`), one toggle (`input_boolean.zigbee_map_fast_scan`) and two automations
-(request the map on schedule, keep the latest answer retained on `zigbee_map/latest`).
+Nothing to edit for a single Zigbee2MQTT instance: the package learns the base topic from the retained
+`<topic>/bridge/state` message that Zigbee2MQTT publishes (only an `online` one counts, stale retained `offline`
+states from old installs are ignored) and keeps it in `input_text.zigbee_map_base_topic`. The panel shows the topic in
+use at the bottom of its options menu. With several instances, set that helper to the one you want and delete the
+"learn the base topic" automation.
+
+The package creates five helpers (`input_text.zigbee_map_base_topic`, `input_number.zigbee_map_scan_interval`,
+`input_number.zigbee_map_live_interval`, `input_datetime.zigbee_map_last_request`, `input_boolean.zigbee_map_fast_scan`)
+and three automations (learn the base topic, request the map on schedule, keep the latest answer retained on
+`zigbee_map/latest`).
 
 ## Update
 
 After HACS installs a new version, bump the `?v=` in `module_url` to the new version in the package file and restart
-Home Assistant. HACS serves `/hacsfiles/` with long cache headers and a custom panel is loaded once per page, so without
-the bump a browser keeps the old module for weeks. Hard-reload the tab afterwards (Ctrl-Shift-R).
+Home Assistant. HACS serves `/hacsfiles/` with a 31-day cache header and a custom panel is loaded once per page, so
+without the bump a browser keeps the old module for weeks. Hard-reload the tab afterwards (Ctrl-Shift-R). Compare the
+package file with the new release's copy as well: a release may add a helper or an automation.
 
 ## Faster scans (optional)
 
@@ -77,8 +92,8 @@ External extensions) and switch on **parallel scan** in the panel's options. Wit
 ## Troubleshooting
 
 - **"admin user needed for mqtt/subscribe"** — log in as an administrator.
-- **"timeout: no response in 10 min"** — wrong `base_topic`, Zigbee2MQTT not connected to the broker Home Assistant
-  uses, or a scan that never finishes (a router hanging in table paging; `networkmap_fast` has a breaker for that).
+- **"timeout: no response in 10 min"** — the base topic is wrong (check `input_text.zigbee_map_base_topic` and the
+  "Z2M topic" shown in options), Zigbee2MQTT is not connected to the broker Home Assistant uses, or a scan never finishes (a router hanging in table paging; `networkmap_fast` has a breaker for that).
 - **Panel shows an old version after an update** — bump `?v=` and restart, see *Update*.
 - **Nothing in the sidebar** — `panel_custom` is loaded at start-up only; check the HA log for the package.
 
