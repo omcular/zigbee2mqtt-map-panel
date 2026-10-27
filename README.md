@@ -69,6 +69,10 @@ and three automations (learn the base topic, request the map on schedule, keep t
 
 ## Update
 
+HACS checks this repository on its own schedule, so a fresh release can take a few hours to show up. To see it at
+once: open the panel's page in HACS, three-dot menu → **Update information**, then reload the browser tab (the page
+keeps the old data until it is rebuilt). **Redownload** also lists every release in a dropdown.
+
 After HACS installs a new version, bump the `?v=` in `module_url` to the new version in the package file and restart
 Home Assistant. HACS serves `/hacsfiles/` with a 31-day cache header and a custom panel is loaded once per page, so
 without the bump a browser keeps the old module for weeks. Hard-reload the tab afterwards (Ctrl-Shift-R). Compare the
