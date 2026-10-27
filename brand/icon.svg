@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <!-- Zigbee2MQTT map: three routers, one weak link. Transparent background. Source of brand/icon*.png and docs/icon.png
-       (rendered by tools/render_icon.sh). Line ends stop 4 units short of the squares. -->
+       (rendered by tools/render_icon.sh). Line ends stop 4 units short of the squares; corner radius 4 (owner, 2026-10-27). -->
   <g stroke-width="3.6" stroke-linecap="round">
     <line x1="28.0" y1="19.9" x2="100.5" y2="31.1" stroke="#3fc96b"/>
     <line x1="103.6" y1="44.6" x2="60.4" y2="98.4" stroke="#f5a623"/>
     <line x1="46.3" y1="97.8" x2="20.2" y2="30.2" stroke="#3fc96b"/>
   </g>
   <g fill="#6ea8fe">
-    <rect x="7.0" y="9.5" width="17.0" height="17.0" rx="2.5"/>
-    <rect x="104.5" y="24.5" width="17.0" height="17.0" rx="2.5"/>
-    <rect x="42.5" y="101.5" width="17.0" height="17.0" rx="2.5"/>
+    <rect x="7.0" y="9.5" width="17.0" height="17.0" rx="4"/>
+    <rect x="104.5" y="24.5" width="17.0" height="17.0" rx="4"/>
+    <rect x="42.5" y="101.5" width="17.0" height="17.0" rx="4"/>
   </g>
 </svg>
