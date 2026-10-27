@@ -1,4 +1,8 @@
-"""Parallel scan: send requests to the networkmap_fast extension instead of Zigbee2MQTT's own scan."""
+"""Send scan requests to the networkmap_fast extension's own topic.
+
+With the extension's default configuration this is not needed: it answers the normal networkmap topic too. Disabled by
+default, for the case where that takeover is off or stops working.
+"""
 
 from __future__ import annotations
 
@@ -22,6 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 class ParallelScanSwitch(MapEntity, SwitchEntity):
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
     _attr_icon = "mdi:fast-forward"
 
     def __init__(self, coordinator: MapCoordinator) -> None:

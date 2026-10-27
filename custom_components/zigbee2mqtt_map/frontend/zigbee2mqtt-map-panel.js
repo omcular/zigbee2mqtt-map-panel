@@ -131,6 +131,7 @@ const STYLE = `
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
   details#help code { font-size:11px; }
+  details#help a { color:var(--primary-color,#03a9f4); }
   details.dd .menu input[type=range] { width:120px; }
   #legend { position:absolute; left:10px; bottom:10px; background:var(--panel); border:1px solid var(--divider-color,#333); border-radius:6px; padding:6px 9px; font-size:11px; color:var(--muted); max-width:min(900px,calc(100% - 40px)); }
   #legend span.sw { display:inline-block; width:20px; height:3px; vertical-align:middle; margin-right:5px; }
@@ -183,7 +184,6 @@ const BAR = `
     <div class="sep"></div>
     <label title="the integration scans on its own at this interval, whether anyone is looking or not (number entity &quot;Background scan interval&quot;). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
     <label title="while this panel is open and visible it requests a scan at this interval (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
-    <label title="use the networkmap_fast external extension (2 routers at a time, the measured sweet spot here) instead of Zigbee2MQTT's one-by-one scan; needs the extension loaded in Z2M (switch entity &quot;Parallel scan&quot;)"><input type="checkbox" id="fastScan"> parallel scan (extension)</label>
     <div id="schedNote" class="note"></div>
     <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="1" step="0.05"> <span id="springV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
@@ -215,7 +215,7 @@ const BAR = `
       <dt>background scan</dt><dd>the integration asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes. The same three settings exist as entities of the "Zigbee2MQTT map" device, usable in automations</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule: the integration runs one scan at a time and remembers the last request</dd>
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
-      <dt>pull fresh map</dt><dd>starts a scan now. Leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). "parallel scan" sends the request to the networkmap_fast extension's own topic (2 routers at a time; more loses routers behind weak links). With the extension's default config the normal topic is served by it too, so the toggle only matters if that takeover is off</dd>
+      <dt>pull fresh map</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
@@ -239,7 +239,7 @@ class ZigbeeMapPanel extends HTMLElement {
   set panel(p) { this._panel = p; }
   // panel config wins; otherwise the helper the package fills from the retained <base>/bridge/state message; last resort the Z2M default
   get S() { return this._status || {}; }           // last status event from the integration
-  get E() { return this.S.entities || {}; }         // entity ids of the settings entities: bg, live, fast
+  get E() { return this.S.entities || {}; }         // entity ids of the settings entities: bg, live
   get baseTopic() { return this.S.base_topic || this._panel?.config?.base_topic || '?'; }
   get fast() { return !!this.S.settings?.[SET.parallel]; }
   setting(k) { const v = parseFloat(this.S.settings?.[k]); return Number.isFinite(v) ? v : null; }
@@ -268,7 +268,6 @@ class ZigbeeMapPanel extends HTMLElement {
       const v = parseFloat(this.$(id).value); if (!Number.isFinite(v) || !this._hass || !this.E[key]) return;
       this._hass.callService('number', 'set_value', { entity_id: this.E[key], value: v }).catch(e => { this.$('schedNote').textContent = 'could not set ' + this.E[key] + ': ' + (e.message || e); });
     };
-    this.$('fastScan').onchange = () => { if (!this._hass || !this.E.fast) return; this._hass.callService('switch', this.$('fastScan').checked ? 'turn_on' : 'turn_off', { entity_id: this.E.fast }).catch(() => {}); };
     this.syncSched();
     if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000);
   }
@@ -276,10 +275,9 @@ class ZigbeeMapPanel extends HTMLElement {
   syncSched() {
     if (!this.$ || !this.$('bgInt')) return;
     const bg = this.setting(SET.bg), live = this.setting(SET.live), have = !!this._status;
-    this.$('fastScan').disabled = !have; this.$('fastScan').checked = this.fast;
     for (const [id, v] of [['bgInt', bg], ['liveInt', live]]) { const el = this.$(id); if (this.shadowRoot.activeElement !== el) { el.value = v == null ? '' : v; el.disabled = !have; } }
     this.$('schedNote').textContent = !have ? 'waiting for the Zigbee2MQTT map integration…' :
-      (bg > 0 ? `background: every ${bg} h` : 'background: off') + ' · ' + (live > 0 ? `viewing: every ${live} min` : 'viewing: off') + (this.fast ? ' · parallel' : '') + ` · Z2M topic: ${this.baseTopic}`;
+      (bg > 0 ? `background: every ${bg} h` : 'background: off') + ' · ' + (live > 0 ? `viewing: every ${live} min` : 'viewing: off') + (this.fast ? ' · networkmap_fast topic' : '') + ` · Z2M topic: ${this.baseTopic}`;
   }
   // while the panel is open and visible: request a scan once the live interval has passed since the last request anywhere
   liveTick() {

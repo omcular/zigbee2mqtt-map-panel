@@ -21,8 +21,8 @@ tell you at a glance how strong the router mesh is. Installed from HACS, set up 
   opens with the latest scan on any device, and a scan that finishes after you close the page is not lost.
 - **Scan while viewing** — while the panel is open it can re-scan at a second, shorter interval; nothing happens when
   nobody is looking. Several open panels share one schedule.
-- **Entities** — the scan intervals, the parallel-scan switch, a "Scan now" button and a "Last scan" timestamp sensor
-  (with router, end-device and link counts) belong to a device "Zigbee2MQTT map", so automations can use them too.
+- **Entities** — the scan intervals, a "Scan now" button and a "Last scan" timestamp sensor (with router, end-device
+  and link counts) belong to a device "Zigbee2MQTT map", so automations can use them too.
 - **Device pictures** from zigbee2mqtt.io (optional), stale-device rings (not seen for 24 h), one-sided links on
   request, routes on request, label search, PNG export.
 
@@ -68,9 +68,11 @@ while it runs. It is proposed to the official
 and its README from the PR branch:
 [`networkmap_fast.mjs`](https://github.com/omcular/zigbee2mqtt-user-extensions/blob/networkmap-fast/unstable/networkmap_fast/networkmap_fast.mjs)
 · [README](https://github.com/omcular/zigbee2mqtt-user-extensions/blob/networkmap-fast/unstable/networkmap_fast/README.md).
-Load it in Zigbee2MQTT (Settings → Dev console → External extensions, needs `advanced.enable_external_js: true`) and
-switch on **parallel scan** in the panel's options (or the "Parallel scan" switch entity). Without it the panel works
-the same, only slower.
+Load it in Zigbee2MQTT (Settings → Dev console → External extensions, needs `advanced.enable_external_js: true`); nothing
+to change on the Home Assistant side, the extension answers the normal map request and the panel shows its progress.
+Only if you turned the extension's takeover of the normal topic off (`replaceBuiltin: false`), enable the disabled-by-default
+switch "Use the networkmap_fast topic" on the Zigbee2MQTT map device. Without the extension the panel works the same,
+only slower.
 
 ## Reading the map
 

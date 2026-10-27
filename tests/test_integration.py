@@ -11,6 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from homeassistant.components import frontend
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.zigbee2mqtt_map.const import CONF_BASE_TOPIC, DOMAIN, PANEL_URL_PATH, WS_SCAN, WS_SUBSCRIBE
 
@@ -64,12 +65,15 @@ async def test_setup_creates_panel_and_entities(hass: HomeAssistant) -> None:
     for entity_id in (
         "number.zigbee2mqtt_map_background_scan_interval",
         "number.zigbee2mqtt_map_scan_interval_while_viewing",
-        "switch.zigbee2mqtt_map_parallel_scan_networkmap_fast",
         "button.zigbee2mqtt_map_scan_now",
         "sensor.zigbee2mqtt_map_last_scan",
     ):
         assert hass.states.get(entity_id) is not None, entity_id
     assert hass.states.get("sensor.zigbee2mqtt_map_last_scan").state == "unknown"
+    # the networkmap_fast switch exists but is disabled by default
+    registry = er.async_get(hass)
+    switch = registry.async_get("switch.zigbee2mqtt_map_use_the_networkmap_fast_topic")
+    assert switch is not None and switch.disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
 
 async def test_scan_round_trip_and_websocket(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
@@ -119,7 +123,7 @@ async def test_scan_round_trip_and_websocket(hass: HomeAssistant, hass_ws_client
     assert (await client2.receive_json())["event"]["map"] == RAW_MAP
 
     # settings through the entities reach the panel as a status event and change the request topic
-    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.zigbee2mqtt_map_parallel_scan_networkmap_fast"}, blocking=True)
+    await hass.data[DOMAIN][entry.entry_id].async_set_setting("parallel", True)
     ev = (await client.receive_json())["event"]
     assert ev["type"] == "status" and ev["settings"]["parallel"] is True
     await hass.services.async_call("button", "press", {"entity_id": "button.zigbee2mqtt_map_scan_now"}, blocking=True)

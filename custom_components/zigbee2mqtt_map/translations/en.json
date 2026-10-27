@@ -39,7 +39,7 @@
       "viewing_minutes": { "name": "Scan interval while viewing" }
     },
     "switch": {
-      "parallel": { "name": "Parallel scan (networkmap_fast)" }
+      "parallel": { "name": "Use the networkmap_fast topic" }
     },
     "button": {
       "scan_now": { "name": "Scan now" }
