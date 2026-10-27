@@ -17,6 +17,7 @@ say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 run() { if [ $DRY = 1 ]; then printf '  (dry) %s\n' "$*"; else "$@"; fi; }
 confirm() { [ $YES = 1 ] && return 0; local a; read -r -p "$1 [y/N] " a; [[ $a == [yY]* ]]; }
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+git fetch -q --tags origin   # releases made with gh create their tags on GitHub only
 branch=$(git rev-parse --abbrev-ref HEAD); [ "$branch" = main ] || { echo "on branch $branch, releases come from main" >&2; exit 1; }
 git rev-parse -q --verify "refs/tags/v$v" >/dev/null && { echo "tag v$v exists already" >&2; exit 1; }
 
