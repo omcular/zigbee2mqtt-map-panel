@@ -93,6 +93,14 @@ only slower.
 - **Nothing in the sidebar** — the panel appears when the integration is set up; check Settings → Devices & services
   for an error on the card and the Home Assistant log for `zigbee2mqtt_map`.
 
+## Development
+
+- Tests: `pip install pytest-homeassistant-custom-component home-assistant-frontend`, then `pytest` from the repo root.
+- `tools/dev_deploy.sh`: copies the working copy to a Home Assistant host over SSH (`HA_HOST=root@homeassistant`)
+  and restarts Core. Do not combine with a HACS download of the integration on that host, both write the same folder.
+- `tools/release_map.sh 2.0.1`: version bump, tests, commit, push, wait for the workflows, GitHub release.
+- `tools/render_icon.sh`: renders `brand/icon.svg` to the PNG sizes HACS and Home Assistant use.
+
 ## Credits
 
 Graph layout by [D3.js](https://d3js.org) (ISC licence, shipped unmodified, see THIRD_PARTY.md). Device pictures by
