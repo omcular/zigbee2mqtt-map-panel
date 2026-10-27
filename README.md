@@ -76,10 +76,16 @@ package file with the new release's copy as well: a release may add a helper or 
 
 ## Faster scans (optional)
 
-[`networkmap_fast`](https://github.com/Koenkk/zigbee2mqtt-user-extensions) is a Zigbee2MQTT external extension that
-scans two routers at a time, puts routers that did not answer last, and reports progress. With it the same 25-router
-scan takes 16–22 s and the panel shows "n/m routers" while it runs. Load it in Zigbee2MQTT (Settings → Dev console →
-External extensions) and switch on **parallel scan** in the panel's options. Without it, leave the toggle off.
+`networkmap_fast` is a Zigbee2MQTT external extension that scans two routers at a time, puts routers that did not
+answer last, and reports progress. With it the same 25-router scan takes 16–22 s and the panel shows "n/m routers"
+while it runs. It is proposed to the official
+[zigbee2mqtt-user-extensions](https://github.com/Koenkk/zigbee2mqtt-user-extensions) collection in
+[pull request #32](https://github.com/Koenkk/zigbee2mqtt-user-extensions/pull/32); until that is merged, take the file
+and its README from the PR branch:
+[`networkmap_fast.mjs`](https://github.com/omcular/zigbee2mqtt-user-extensions/blob/networkmap-fast/unstable/networkmap_fast/networkmap_fast.mjs)
+· [README](https://github.com/omcular/zigbee2mqtt-user-extensions/blob/networkmap-fast/unstable/networkmap_fast/README.md).
+Load it in Zigbee2MQTT (Settings → Dev console → External extensions, needs `advanced.enable_external_js: true`) and
+switch on **parallel scan** in the panel's options. Without it, leave the toggle off; the panel works the same, only slower.
 
 ## Reading the map
 
