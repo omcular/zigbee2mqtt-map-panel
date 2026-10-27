@@ -176,3 +176,17 @@ async def test_background_schedule(hass: HomeAssistant, mqtt, freezer) -> None:
     async_fire_time_changed(hass, dt_util.utcnow())
     await hass.async_block_till_done()
     assert mqtt.async_publish.call_count == 2  # 59 min >= 1 h - 90 s slack
+
+
+def test_version_in_sync() -> None:
+    """manifest.json, const.VERSION and the panel's VERSION must agree (tools/bump_version.sh sets all three)."""
+    import json
+    import re
+    from pathlib import Path
+
+    from custom_components.zigbee2mqtt_map.const import VERSION
+
+    d = Path(__file__).resolve().parents[1] / "custom_components" / "zigbee2mqtt_map"
+    assert json.loads((d / "manifest.json").read_text())["version"] == VERSION
+    js = (d / "frontend" / "zigbee2mqtt-map-panel.js").read_text()
+    assert re.search(r"^const VERSION = '([0-9.]+)';", js, re.M).group(1) == VERSION
