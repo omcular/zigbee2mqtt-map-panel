@@ -5,6 +5,7 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- Toolbar: "pull fresh map" is now a download icon button right before the status text.
 - Status line: "scanned 33m ago" / "scanned 2d ago" instead of the date and time; the exact time on hover.
 - Min LQI starts at the mesh's "redundant" threshold (shown as *auto*) until you move the slider, so a first look
   shows the mesh instead of every marginal link. "reset to defaults" brings the automatic value back.

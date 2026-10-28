@@ -113,7 +113,9 @@ const STYLE = `
   #bar button { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 8px; cursor:pointer; }
   #bar button:hover { border-color:#888; }
   #bar button.primary { border-color:var(--primary-color,#03a9f4); color:var(--primary-color,#03a9f4); }
-  #status { color:var(--muted); margin-left:auto; }
+  #status { color:var(--muted); }
+  #scanGrp { margin-left:auto; display:flex; gap:8px; align-items:center; min-width:0; }
+  #bar button#pull { flex:none; padding:3px 6px; line-height:0; } #bar button#pull:disabled { opacity:.5; cursor:default; }
   #side { position:absolute; top:0; right:0; bottom:0; width:min(100%, max(440px, 46%)); display:none; flex-direction:column; background:var(--panel); border-left:1px solid var(--divider-color,#333); box-shadow:-6px 0 18px rgba(0,0,0,.35); z-index:5; }
   #side.show { display:flex; }
   #side .sidebar { display:flex; gap:10px; align-items:center; padding:5px 10px; border-bottom:1px solid var(--divider-color,#333); font-size:12px; }
@@ -170,9 +172,9 @@ const STYLE = `
   #legend span.grad { position:relative; display:inline-block; width:120px; height:5px; border-radius:2px; vertical-align:middle; margin:0 20px 10px 6px; }
   #legend span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:380px; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
-  svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
-  svg:active { cursor:grabbing; }
-  svg.rotating { cursor:grabbing; }
+  #canvas > svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
+  #canvas > svg:active { cursor:grabbing; }
+  #canvas > svg.rotating { cursor:grabbing; }
   #tip .big { font-size:22px; font-weight:600; line-height:1.1; margin-bottom:3px; }
   #tip .title { font-size:16px; font-weight:600; line-height:1.2; margin-bottom:2px; }
   #canvas { position:relative; flex:1; height:calc(100% - var(--barh,44px)); }
@@ -199,7 +201,6 @@ const STYLE = `
 
 const BAR = `
   <ha-menu-button></ha-menu-button>
-  <button id="pull" class="primary">pull fresh map</button>
   <label title="show only links whose weaker direction is above this LQI · far left: show all">Min LQI <input type="range" id="hide" min="0" max="255" value="0" step="5"> <span id="hideV">off</span></label>
   <label>find <input type="text" id="find" placeholder="node name…"></label>
   <details id="devs" class="dd"><summary>devices ▾</summary><div class="menu" id="devMenu"></div></details>
@@ -251,7 +252,7 @@ const BAR = `
       <dt>background scan</dt><dd>the integration asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes. The same three settings exist as entities of the "Zigbee2MQTT map" device, usable in automations</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule: the integration runs one scan at a time and remembers the last request</dd>
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
-      <dt>pull fresh map</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
+      <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Until you move it, it follows the "redundant" threshold ("auto"): the mesh first, marginal links on demand. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
@@ -259,7 +260,7 @@ const BAR = `
     </dl>
     <p class="ver">zigbee2mqtt-map-panel v${VERSION}</p>
   </div></details>
-  <span id="status"></span>
+  <span id="scanGrp"><button id="pull" class="primary icon" title="pull a fresh map: scan the network now" aria-label="pull a fresh map"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button><span id="status"></span></span>
   <a id="gear" href="/config/integrations/integration/zigbee2mqtt_map" data-nav title="integration settings: Zigbee2MQTT frontend URL, sidebar title, administrators only · entities, reload">⚙</a>
   <div id="stale"><span id="staleMsg"></span><button id="reload">reload</button></div>`;
 
@@ -396,7 +397,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.initGraph();
     const cached = lsGet(LS.map, null);
     if (cached) { this.setMap(cached.map, cached.fetchedAt); }
-    else this.$('status').textContent = 'no map yet, press "pull fresh map"';
+    else this.$('status').textContent = 'no map yet, press ⤓ to scan';
     this.watchStore();
     new ResizeObserver(() => this.onResize()).observe(this.$('canvas'));
     this.onResize();

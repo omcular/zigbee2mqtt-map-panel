@@ -61,7 +61,7 @@ Then, either way:
 
    or Settings → Devices & services → **Add integration** → "Zigbee2MQTT map". The dialog shows the Zigbee2MQTT
    instances found on your broker and pre-fills the base topic; confirm it.
-3. "Zigbee map" appears in the sidebar. Open it, press **pull fresh map**, then set the two intervals in **options**
+3. "Zigbee map" appears in the sidebar. Open it, press the **⤓** button (scan now, next to the status text), then set the two intervals in **options**
    (2 h background / 10 min while viewing is a sensible start). The **devices ▾** list links every device to its
    Home Assistant device page; for links into the Zigbee2MQTT frontend, enter its URL in the integration's options
    (Settings → Devices & services → Zigbee2MQTT map → Configure). A scan of a 25-router mesh takes about 75 s with
