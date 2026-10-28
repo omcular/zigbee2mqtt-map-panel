@@ -144,7 +144,7 @@ const STYLE = `
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
   details#devs .menu { min-width:min(640px, calc(100vw - 40px)); max-height:min(70vh, 640px); overflow:auto; gap:4px; }
   details#devs table { border-collapse:collapse; font-size:12px; user-select:none; }
-  details#devs tr.sub th { background:transparent; padding-top:6px; }
+  details#devs tr.sub th { border-top:6px solid var(--panel); }
   details#devs th { text-align:left; color:var(--muted); font-weight:normal; padding:3px 10px 3px 4px; white-space:nowrap; background:var(--bgc); }
   details#devs th:first-child { border-radius:4px 0 0 4px; } details#devs th:last-child { border-radius:0 4px 4px 0; }
   details#devs tr.head + tr td { padding-top:5px; }
