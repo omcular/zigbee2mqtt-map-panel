@@ -526,7 +526,7 @@ class ZigbeeMapPanel extends HTMLElement {
 
   initGraph() {
     const r = this.shadowRoot, $ = this.$;
-    this.svg = d3.select(r.querySelector('svg')); this.tip = d3.select($('tip'));
+    this.svg = d3.select($('canvas').querySelector(':scope > svg')); this.tip = d3.select($('tip'));
     this.g = this.svg.append('g'); this.gl = this.g.append('g'); this.glq = this.g.append('g'); this.gn = this.g.append('g');
     // Ctrl is excluded on purpose: Ctrl-wheel stays browser zoom, Ctrl-drag rotates (below); middle button rotates too
     this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { this._zoomT = e.transform; this.g.attr('transform', e.transform); }).on('end', () => this.saveView()).filter(e => (e.type === 'wheel' || !e.target.closest?.('.node')) && !e.button && !e.ctrlKey);   // nodes are for dragging, but the wheel zooms everywhere
