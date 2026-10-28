@@ -190,6 +190,7 @@ const STYLE = `
   #tip .routes { margin-top:6px; border-top:1px solid var(--divider-color,#444); padding-top:4px; white-space:normal; }
   #tip .routes .h { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; }
   #tip .routes .rt { margin:2px 0 0 10px; text-indent:-10px; }
+  #tip .path { margin-top:4px; white-space:normal; }
   #tip .tiphint { margin-top:4px; font-size:10px; color:var(--muted); } #tip .muted { color:var(--muted); }
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:min(380px, calc(100% - 8px)); box-sizing:border-box; overflow-wrap:anywhere; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   #canvas > svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
@@ -199,6 +200,9 @@ const STYLE = `
   #tip .title { font-size:16px; font-weight:600; line-height:1.2; margin-bottom:2px; }
   #canvas { position:relative; order:2; flex:1 1 auto; min-height:0; }
   .link line.vis { stroke-linecap:round; pointer-events:none; }
+  .link path.arr { pointer-events:none; }
+  .link.onpath line.vis { stroke-width:10px !important; }   /* the selected router's path to the coordinator */
+  .link.onpath path.arr { display:none !important; }
   .link line.hit { stroke:transparent; stroke-width:6px; }
   .link.dim, .lql.dim { opacity:0.3; }
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
@@ -233,6 +237,8 @@ const BAR = `
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
     <label>show names for <select id="names"><option value="none">none</option><option value="routers">routers only</option><option value="all" selected>all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
+    <label title="draw what the routing tables say: links that carry active routes thick (the more routes, the thicker), the rest thin, arrows for the direction; a selected router shows its path to the coordinator. Needs a scan with &quot;routes on pull&quot;"><input type="checkbox" id="showRoutes"> routes overlay</label>
+    <div id="routesNote" class="note"></div>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg"> show device images</label>
     <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
     </div>
@@ -267,6 +273,7 @@ const BAR = `
       <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "one-sided / stale on selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map (again: none), <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
       <dt>click / tap node: card</dt><dd>besides selecting the node, its card stays open with "Z2M" and "HA" links (as in the devices list). A click on the card, <kbd>Esc</kbd>, the background or another node closes it; clicking the selected node again brings it back</dd>
+      <dt>routes overlay</dt><dd>(options) what the routing tables say, after a scan with "routes on pull": links carrying active routes are thick, the more routes the thicker, arrows show the direction, links without routes are thin. Select a router and its path to the coordinator is drawn extra thick; the node card names the hops. The routing tables hold where traffic actually goes, the neighbour tables only who hears whom</dd>
       <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
       <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
     </dl>
@@ -534,6 +541,13 @@ class ZigbeeMapPanel extends HTMLElement {
       l.oneSided = !l.endLink && (l.lqS == null || l.lqT == null || l.lqS === 0 || l.lqT === 0);
       const rels = [l.relS, l.relT].filter(r => r != null); l.sibling = rels.length > 0 && rels.every(r => r === 2);
     }
+    // routes: active entries per link, which end holds them (direction), and every router's next hop toward the coordinator
+    const coord = nodes.find(n => n.type === 'Coordinator'), coordNwk = coord?.nwk ?? 0, uplink = {};
+    for (const l of links) {
+      l.rA = l.routes.filter(r => r.status === 'ACTIVE'); l.rVia = new Set(l.rA.map(r => r.via));
+      for (const r of l.rA) if (r.to === coordNwk && !uplink[r.via]) uplink[r.via] = r.via === l.s.id ? l.t : l.s;
+    }
+    this._uplink = uplink; this._hasRoutes = links.some(l => l.routes.length > 0);
     this.data = { nodes, links, byId, fetchedAt };
     let wantSel = [...this.sel].map(n => n.id);   // a new scan keeps the current selection if the nodes still exist
     if (firstMap) { const saved = lsGet(LS.sel, null); wantSel = Array.isArray(saved) ? saved : saved ? [saved] : []; }
@@ -612,7 +626,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
       .on('tick', () => { this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
-    const PREFS = ['swapBars', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['swapBars', 'showRoutes', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
@@ -622,7 +636,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); this.draw(); };
     const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
-    $('showEnd').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
+    $('showEnd').onchange = () => this.render(); $('showRoutes').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
@@ -725,8 +739,13 @@ class ZigbeeMapPanel extends HTMLElement {
     const link = this.gl.selectAll('g.link').data(links, key); link.exit().remove();
     const le = link.enter().append('g').attr('class', 'link');
     le.append('line').attr('class', 'vis'); le.append('line').attr('class', 'hit');
+    le.append('path').attr('class', 'arr arrS').attr('d', 'M-6,-4.5 L6,0 L-6,4.5 Z'); le.append('path').attr('class', 'arr arrT').attr('d', 'M-6,-4.5 L6,0 L-6,4.5 Z');
     const lm = le.merge(link);
     lm.select('line.vis').attr('stroke', color).attr('stroke-width', width).attr('stroke-dasharray', l => l.oneSided ? '4 4' : null);
+    const ro = this.routesOn();
+    lm.select('path.arrS').attr('fill', color).style('display', l => ro && l.rVia?.has(l.s.id) ? null : 'none');
+    lm.select('path.arrT').attr('fill', color).style('display', l => ro && l.rVia?.has(l.t.id) ? null : 'none');
+    $('routesNote').textContent = ro && !this._hasRoutes ? 'this map has no routes: scan with "routes on pull"' : '';
     lm.select('line.hit')
       .on('mouseenter', (e, l) => this._pinned || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
         esc(`${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})`) + (l.routes.length ? routesHtml(l) : ''), true))
@@ -813,7 +832,19 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('y', d3.forceY(d => iso(d) ? parkY : cy).strength(d => iso(d) ? 0.25 : 0.03));
   }
   // constant width: colour alone carries the LQI; one-sided links are hairlines
-  linkWidth(l) { return l.oneSided ? 0.8 : 3; }
+  linkWidth(l) {
+    if (l.oneSided) return 0.8;
+    if (this.routesOn()) return l.rA?.length ? Math.min(9, 3 + 1.2 * l.rA.length) : 1.2;   // overlay: thickness = number of active routes
+    return 3;
+  }
+  routesOn() { return !!this.$('showRoutes')?.checked; }
+  // the chain of next hops from a router to the coordinator, as [links], or null when the map holds no such route
+  pathHome(n) {
+    const links = [], seen = new Set(); let cur = n;
+    while (cur && cur.type !== 'Coordinator' && !seen.has(cur)) { seen.add(cur); const nx = this._uplink?.[cur.id]; if (!nx) return null;
+      const l = this.data.links.find(l => (l.s === cur && l.t === nx) || (l.t === cur && l.s === nx)); if (!l) return null; links.push(l); cur = nx; }
+    return cur?.type === 'Coordinator' ? links : null;
+  }
   // labels: none / routers (coordinator included) / all
   // auto: set by the panel (no render here, the caller renders) · otherwise a user choice, remembered
   setMinLqi(v, auto = false) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
@@ -829,7 +860,11 @@ class ZigbeeMapPanel extends HTMLElement {
       const s = l.source, t = l.target, dx = t.x - s.x, dy = t.y - s.y, len = Math.hypot(dx, dy) || 1, rs = s._r ?? 10, rt = t._r ?? 10;
       let x1 = s.x, y1 = s.y, x2 = t.x, y2 = t.y;
       if (len > rs + rt + 4) { const ux = dx / len, uy = dy / len; x1 += ux * rs; y1 += uy * rs; x2 -= ux * rt; y2 -= uy * rt; } else { x2 = x1; y2 = y1; }
-      for (const ln of this.children) { ln.setAttribute('x1', x1); ln.setAttribute('y1', y1); ln.setAttribute('x2', x2); ln.setAttribute('y2', y2); }
+      for (const ln of this.children) {
+        if (ln.tagName === 'line') { ln.setAttribute('x1', x1); ln.setAttribute('y1', y1); ln.setAttribute('x2', x2); ln.setAttribute('y2', y2); }
+        else if (ln.classList.contains('arrS')) ln.setAttribute('transform', `translate(${x1 + (x2 - x1) * 0.62},${y1 + (y2 - y1) * 0.62}) rotate(${Math.atan2(dy, dx) * 180 / Math.PI})`);   // s -> t
+        else if (ln.classList.contains('arrT')) ln.setAttribute('transform', `translate(${x1 + (x2 - x1) * 0.38},${y1 + (y2 - y1) * 0.38}) rotate(${Math.atan2(dy, dx) * 180 / Math.PI + 180})`);   // t -> s
+      }
     });
     this.glq.selectAll('text').attr('x', l => (l.source.x + l.target.x) / 2).attr('y', l => (l.source.y + l.target.y) / 2 - 3);
     this.gn.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`).classed('pinned', d => d.fx != null);
@@ -840,8 +875,11 @@ class ZigbeeMapPanel extends HTMLElement {
     const matches = q ? new Set(this.data.nodes.filter(n => n.name.toLowerCase().includes(q)).map(n => n.id)) : null;
     const keep = new Set();
     if (sel) { for (const n of this.sel) keep.add(n.id); this.gl.selectAll('g.link').each(l => { if (this.sel.has(l.s)) keep.add(l.t.id); if (this.sel.has(l.t)) keep.add(l.s.id); }); }
+    const path = sel && this.routesOn() && this.sel.size === 1 ? this.pathHome(sel) : null, onPath = new Set(path || []);
+    if (path) for (const l of path) { keep.add(l.s.id); keep.add(l.t.id); }
     const active = sel ? keep : matches;
-    const linkOn = l => !active || (sel ? this.touchesSel(l) : (active.has(l.s.id) || active.has(l.t.id)));
+    const linkOn = l => !active || (sel ? (this.touchesSel(l) || onPath.has(l)) : (active.has(l.s.id) || active.has(l.t.id)));
+    this.gl.selectAll('g.link').classed('onpath', l => onPath.has(l));
     this.gn.selectAll('g.node').classed('dim', d => active && !active.has(d.id)).classed('sel', d => this.sel.has(d) || (matches && matches.has(d.id) && !sel));
     this.gl.selectAll('g.link').classed('dim', l => !linkOn(l));
     this.glq.selectAll('text').classed('dim', l => !linkOn(l));
@@ -946,7 +984,13 @@ class ZigbeeMapPanel extends HTMLElement {
     this.wireLinks(box, () => { this.$('devs').open = false; });
   }
   nodeTipHtml(d) {
-    return `<div class="title">${esc(d.name)}</div>` + esc(`${d.type}${d.vendor ? ` · ${d.vendor} ${d.model}` : ''}${d.desc ? `\n${d.desc}` : ''}\nIEEE ${d.id}${d.nwk != null ? `  nwk ${d.nwk}` : ''}${d.lastSeen ? `\n${d.type === 'Coordinator' ? 'Zigbee2MQTT running since' : 'last seen'} ${new Date(d.lastSeen).toLocaleString()}` : ''}\nlinks: ${this.data.links.filter(l => l.s === d || l.t === d).length}`);
+    return `<div class="title">${esc(d.name)}</div>` + esc(`${d.type}${d.vendor ? ` · ${d.vendor} ${d.model}` : ''}${d.desc ? `\n${d.desc}` : ''}\nIEEE ${d.id}${d.nwk != null ? `  nwk ${d.nwk}` : ''}${d.lastSeen ? `\n${d.type === 'Coordinator' ? 'Zigbee2MQTT running since' : 'last seen'} ${new Date(d.lastSeen).toLocaleString()}` : ''}\nlinks: ${this.data.links.filter(l => l.s === d || l.t === d).length}`) + this.pathHomeHtml(d);
+  }
+  pathHomeHtml(d) {
+    if (d.type !== 'Router') return '';
+    const p = this.pathHome(d); if (!p) return this._hasRoutes ? '<div class="muted">no active route to the coordinator in its table</div>' : '';
+    let cur = d; const names = [esc(d.name)]; for (const l of p) { cur = l.s === cur ? l.t : l.s; names.push(esc(cur.name)); }
+    return `<div class="path"><span class="muted">path to coordinator</span> ${names.join(' → ')}</div>`;
   }
   // HA / Z2M links for one device, as used in the devices list and on a pinned card
   devLinks(n) {
