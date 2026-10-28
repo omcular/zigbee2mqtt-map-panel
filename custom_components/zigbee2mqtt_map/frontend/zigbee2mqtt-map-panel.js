@@ -10,7 +10,7 @@ const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan
 const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
-const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1', avoid: 'z2m_map_avoid', devSort: 'z2m_map_devsort_v1', hideSet: 'z2m_map_hide_user' };
+const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1', avoid: 'z2m_map_avoid', devSort: 'z2m_map_devsort_v1', hideSet: 'z2m_map_hide_user', hideMode: 'z2m_map_hide_mode' };
 
 let d3Ready;
 function loadD3() {
@@ -290,7 +290,7 @@ const BAR = `
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
       <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "pull routes" also reads routing tables (slower, much slower on the first pull). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
-      <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only links whose weaker direction is above the chosen LQI (the white marker); far left shows all. Until you move it, it follows the "redundant" threshold ("auto"): the mesh first, marginal links on demand. Bad links are easiest found by colour with the slider at off</dd>
+      <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only links whose weaker direction is above the chosen LQI (the white marker); far left shows all. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
@@ -563,13 +563,14 @@ class ZigbeeMapPanel extends HTMLElement {
       const tipR = `no single router is a point of failure at LQI ${mesh.redundant} or better: remove any one router and the rest still reach the coordinator` +
         (mesh.spof ? `\njust above that, ${nm(mesh.spof.id)} becomes a single point of failure for ${mesh.spof.lost.map(nm).join(', ')}` : mesh.redundant === mesh.connected ? '\nlimited by the same link as "connected"' : '') + `\nclick: set Min LQI to this level`;
       st.append(' · mesh: ');
-      const mk = (label, v, tip) => { const b = document.createElement('span'); b.className = 'mesh'; b.textContent = `${label} ≥ ${v}`; b.title = tip; b.onclick = () => this.setMinLqi(v); st.append(b); };
+      const mk = (label, v, tip) => { const b = document.createElement('span'); b.className = 'mesh'; b.textContent = `${label} ≥ ${v}`; b.title = tip + `\nclick: set Min LQI to this level and keep following it on every new map`; b.onclick = () => { lsSet(LS.hideMode, label); this.setMinLqi(v, false, label); }; st.append(b); };
       mk('connected', mesh.connected, tipC); st.append(', '); mk('redundant', mesh.redundant, tipR);
     }
     if (!(seeded > 0)) this.warm = false;
     // a first look should show the mesh, not every marginal link: until the user picks a Min LQI, follow the "redundant"
     // threshold (the links below it are the ones nothing depends on)
-    if (mesh?.redundant > 0 && !lsGet(LS.hideSet, false)) this.setMinLqi(mesh.redundant, true);
+    const mode = this.hideMode();
+    if (mesh && mode !== 'manual' && mesh[mode === 'connected' ? 'connected' : 'redundant'] >= 0) this.setMinLqi(mesh[mode === 'connected' ? 'connected' : 'redundant'], true, mode);
     this.render();
   }
 
@@ -644,7 +645,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.updLegendMk = () => { const mk = $('lq').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.style.left = (v / 2.55) + '%';
       $('lq').title = `Min LQI: ${$('hideV').textContent} · shows only links whose weaker direction is above it · press or drag on the bar · far left: show all`; };
     const setFromBar = (g, x) => { const r = g.getBoundingClientRect(), v = Math.max(0, Math.min(255, Math.round(((x - r.left) / r.width) * 255 / 5) * 5)), h = $('hide');
-      if (+h.value === v && lsGet(LS.hideSet, false)) return; h.value = v; lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); };
+      if (+h.value === v && this.hideMode() === 'manual') return; h.value = v; lsSet(LS.hideMode, 'manual'); h.dispatchEvent(new Event('input')); };
     $('lq').addEventListener('pointerdown', e => {
       const g = e.target.closest?.('span.grad'); if (!g || e.button > 0) return;
       e.preventDefault(); try { g.setPointerCapture(e.pointerId); } catch (err) {} g.classList.add('drag'); setFromBar(g, e.clientX);
@@ -654,7 +655,7 @@ class ZigbeeMapPanel extends HTMLElement {
       g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
     });
     this.updLegendMk();
-    $('hide').oninput = e => { if (e.isTrusted) lsSet(LS.hideSet, true); $('hideV').textContent = hideLabel(+$('hide').value); this.updLegendMk(); this.render(); };
+    $('hide').oninput = e => { if (e.isTrusted) lsSet(LS.hideMode, 'manual'); $('hideV').textContent = hideLabel(+$('hide').value); this.updLegendMk(); this.render(); };
     $('spring').value = this.spring; $('springV').textContent = this.spring.toFixed(1);
     $('spring').oninput = () => { this.spring = +$('spring').value; $('springV').textContent = this.spring.toFixed(1); lsSet(LS.spring, this.spring); this.sim.force('link').distance(dist); this.sim.force('charge').strength(charge); this.sim.alpha(0.5).restart(); };
     $('avoid').value = this.avoid; $('avoidV').textContent = this.avoid.toFixed(1);
@@ -674,7 +675,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('png').onclick = () => this.savePng();
     $('resetall').onclick = () => {
       this._devSort = null;
-      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort, LS.hideSet]) { try { localStorage.removeItem(k); } catch (e) {} }
+      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort, LS.hideSet, LS.hideMode]) { try { localStorage.removeItem(k); } catch (e) {} }
       this.sim.stop(); clearTimeout(this._posT); this.data = null; this.selected = null; this.warm = false; this._zoomT = null;
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }
       this.build();   // rebuilds the bar and the graph with defaults; the cached map is re-read from storage
@@ -847,9 +848,13 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   // labels: none / routers (coordinator included) / all
   // auto: set by the panel (no render here, the caller renders) · otherwise a user choice, remembered
-  setMinLqi(v, auto = false) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
-    if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + ' (automatic: the redundant threshold)'; this.updLegendMk?.(); return; }
-    lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); }
+  // 'manual' (bar dragged) · 'connected' / 'redundant' (mesh number clicked: re-applied on every new map) · null: automatic = redundant
+  hideMode() { const m = lsGet(LS.hideMode, null); return m || (lsGet(LS.hideSet, false) ? 'manual' : null); }
+  // auto: applied by the panel on a new map (no render here, the caller renders) · otherwise a click on a mesh number
+  setMinLqi(v, auto = false, mode = null) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
+    const note = mode ? ` (follows ${mode})` : ' (automatic: the redundant threshold)';
+    if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + note; this.updLegendMk?.(); return; }
+    h.dispatchEvent(new Event('input')); this.$('hideV').textContent = hideLabel(+h.value) + note; this.updLegendMk?.(); }
   applyNames() {
     const mode = this.$('names').value;
     this.gn?.selectAll('g.node text').style('display', d => mode === 'all' || (mode === 'routers' && !d.isEnd) ? null : 'none');

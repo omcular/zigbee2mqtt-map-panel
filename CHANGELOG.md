@@ -26,8 +26,9 @@ section and uses it as the GitHub release notes.
 - Devices not in Zigbee2MQTT's device list get no Z2M link (Zigbee2MQTT has no page for them).
 - Toolbar: "pull fresh map" is now a download icon button right before the status text.
 - Status line: "scanned 33m ago" / "scanned 2d ago" instead of the date and time; the exact time on hover.
-- Min LQI starts at the mesh's "redundant" threshold (shown as *auto*) until you move the slider, so a first look
-  shows the mesh instead of every marginal link. "reset to defaults" brings the automatic value back.
+- Min LQI follows the mesh's "redundant" threshold until you move the slider, so a first look
+  shows the mesh instead of every marginal link. Clicking "connected" or "redundant" in the status line makes it follow
+  that threshold on every new map; dragging the bar fixes a value. "reset to defaults" brings the automatic mode back.
 - Devices list: sortable by name, type, LQI (weaker direction first, then the stronger) and last seen.
 - Help: each entry as a small heading with its explanation indented below (was a two-column table).
 - Dropdowns stay inside the panel: shifted left when they would stick out, narrower and wrapping on a phone.
