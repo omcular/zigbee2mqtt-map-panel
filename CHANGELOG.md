@@ -5,6 +5,7 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- README: `networkmap_fast` is merged into zigbee2mqtt-user-extensions, link to it there.
 - Panel: **devices ▾** dropdown in the toolbar. With a node selected it lists that device and its neighbours with
   both LQI directions, otherwise every device (the "find" text filters it). Click a name to select it on the map;
   "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend, in a drawer over the
