@@ -27,9 +27,7 @@ const ago = ms => ms < 60e3 ? 'just now' : ms < 3600e3 ? `${Math.round(ms / 60e3
 const LQ = { red: '#e5484d', orange: '#f5a623', green: '#46c36a', green2: '#22d66f', grey: '#8a8f99' };
 let lqScale = null;   // built once d3 is loaded
 const lqSmooth = v => (lqScale ??= d3.scaleLinear().domain([0, 50, 80, 255]).range([LQ.red, LQ.orange, LQ.green, LQ.green2]).interpolate(d3.interpolateHcl).clamp(true))(v);
-const lqStep = v => v >= 80 ? LQ.green : v >= 50 ? LQ.orange : LQ.red;
-let smoothColours = true;
-const lqColor = v => v == null || v === 0 ? LQ.grey : smoothColours ? lqSmooth(v) : lqStep(v);
+const lqColor = v => v == null || v === 0 ? LQ.grey : lqSmooth(v);
 const LQ_GRADIENT = `linear-gradient(to right, ${LQ.red} 0%, ${LQ.orange} ${50 / 2.55}%, ${LQ.green} ${80 / 2.55}%, ${LQ.green2} 100%)`;
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -217,7 +215,6 @@ const BAR = `
     <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
     <label>show names for <select id="names"><option value="none">none</option><option value="routers">routers only</option><option value="all" selected>all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
-    <label title="on: link colour runs continuously from red (0) through orange (50) to green (80 and up) · off: three fixed colours"><input type="checkbox" id="smooth" checked> smooth link colours</label>
     <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> routes on pull</label>
     <div class="sep"></div>
     <label title="the integration scans on its own at this interval, whether anyone is looking or not (number entity &quot;Background scan interval&quot;). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
@@ -244,7 +241,7 @@ const BAR = `
     </dl>
     <h4>Reading the map</h4>
     <dl>
-      <dt>a / b on a link</dt><dd>what the left-hand node hears from the right-hand one / what the right-hand node hears. LQI 0–255, higher is better: colour runs from <span style="color:var(--red)">red (0)</span> through <span style="color:var(--orange)">orange (50)</span> to <span style="color:var(--green)">green (80 and up)</span>; "smooth link colours" off in options gives three fixed bands instead. Colour follows the weaker direction</dd>
+      <dt>a / b on a link</dt><dd>what the left-hand node hears from the right-hand one / what the right-hand node hears. LQI 0–255, higher is better: colour runs from <span style="color:var(--red)">red (0)</span> through <span style="color:var(--orange)">orange (50)</span> to <span style="color:var(--green)">green (80 and up)</span>. Colour follows the weaker direction</dd>
       <dt>dashed grey</dt><dd>only one side reported the link, or reported 0: usually a stale neighbour-table entry (hidden unless "one-sided / stale links" is on)</dd>
       <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI contrast" in options sets how much; "spacing" scales all distances)</dd>
@@ -269,10 +266,8 @@ const BAR = `
   <div id="stale"><span id="staleMsg"></span><button id="reload">reload</button></div>`;
 
 const LEGEND_TAIL = `<span class="sw" style="height:0;border-top:2px dashed #999"></span>one side only &nbsp;·&nbsp; a / b = what left hears / what right hears &nbsp;·&nbsp; see "help ▾"`;
-const legendHtml = smooth => smooth
-  ? `<div><span class="grad" title="click: set Min LQI here" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span>LQI &nbsp; ${LEGEND_TAIL}</div>`
-  : `<div><span class="sw" style="background:${LQ.green}"></span>LQI ≥ 80 &nbsp; <span class="sw" style="background:${LQ.orange}"></span>50–79 &nbsp; <span class="sw" style="background:${LQ.red}"></span>&lt; 50 &nbsp; ${LEGEND_TAIL}</div>`;
-const LEGEND = legendHtml(true);
+const legendHtml = () => `<div><span class="grad" title="click: set Min LQI here" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span>LQI &nbsp; ${LEGEND_TAIL}</div>`;
+const LEGEND = legendHtml();
 
 // d3 force: keep nodes off links they do not belong to. A node closer than its clearance to the middle part of a foreign
 // link is pushed out along the link's normal, and the link's two ends get the opposite push (split by where the node sits),
@@ -578,7 +573,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
       .on('tick', () => { this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
-    const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'smooth', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
@@ -590,8 +585,6 @@ class ZigbeeMapPanel extends HTMLElement {
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
     $('showEnd').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
-    const applySmooth = () => { smoothColours = $('smooth').checked; $('legend').innerHTML = legendHtml(smoothColours); this.updLegendMk?.(); this.gl?.selectAll('g.link line.vis').attr('stroke', l => l.oneSided ? LQ.grey : lqColor(l.min)); };
-    $('smooth').onchange = applySmooth; applySmooth();
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
