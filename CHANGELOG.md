@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- Map: clicking or tapping a node also opens its card, which stays until clicked (or Esc, background, another node)
+  and carries the device's "Z2M" and "HA" links.
 - Toolbar: Min LQI is now the LQI colour bar itself (value on hover): a marker shows the setting, press or drag on the bar to change it
   (mouse and touch). The bottom legend box is gone; its notes are in the help.
 - Options: "smooth link colours" removed; link colour always runs continuously from red through orange to green.
