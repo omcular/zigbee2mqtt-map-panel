@@ -135,17 +135,19 @@ const STYLE = `
   details.dd .menu .note { color:var(--muted); font-size:11px; }
   details.dd .menu select { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:2px 4px; }
   details.dd .menu input[type=number] { width:64px; background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:2px 4px; }
-  details#help .menu { --mw:560px; gap:6px; font-size:12px; line-height:1.45; }
+  details#help .menu { gap:6px; font-size:12px; line-height:1.45; }
+  /* help: the term as a small heading, its explanation indented below it */
+  details#help .menu { --mw:560px; }
+  details#help dl { margin:0; }
+  details#help dl > div { padding-top:8px; }
+  details#help dt { color:var(--primary-text-color); font-weight:600; }
+  details#help dd { margin:2px 0 0 14px; color:var(--muted); overflow-wrap:anywhere; }
   details#help h4 { margin:4px 0 0; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-  details#help dl { display:grid; grid-template-columns:fit-content(40%) minmax(0, 1fr); gap:3px 12px; margin:0; }
-  details#help dd { min-width:0; overflow-wrap:anywhere; }
-  @media (max-width:520px) { details#help dl { grid-template-columns:minmax(0, 1fr); gap:0; } details#help dt { margin-top:6px; } }
-  details#help dt { color:var(--primary-text-color); white-space:nowrap; }
-  details#help dd { margin:0; color:var(--muted); }
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
   details#devs .menu { --mw:640px; max-height:min(70vh, 640px); overflow:auto; gap:4px; }
-  details#help dt { white-space:normal; } details#devs td.name { white-space:normal; min-width:90px; }
+details#devs td.name { white-space:normal; min-width:90px; }
+
   details#devs table { border-collapse:collapse; font-size:12px; user-select:none; }
   details#devs tr.sub th { border-top:6px solid var(--panel); }
   details#devs th[data-sort] { cursor:pointer; } details#devs th[data-sort]:hover { color:var(--primary-text-color,#fff); } details#devs th.sorted { color:var(--primary-text-color,#fff); }
@@ -342,6 +344,11 @@ class ZigbeeMapPanel extends HTMLElement {
     this.$ = id => r.getElementById(id);
     this.$('pull').onclick = () => this.pull();
     this.$('reload').onclick = () => location.reload();
+    // help: each term with its explanation as one block, so a column break never separates them
+    for (const dl of r.querySelectorAll('details#help dl')) for (const dt of [...dl.querySelectorAll(':scope > dt')]) {
+      const item = document.createElement('div'); dl.insertBefore(item, dt); item.append(dt);
+      while (item.nextElementSibling?.tagName === 'DD') item.append(item.nextElementSibling);
+    }
     this.$('gear').onclick = e => { e.preventDefault(); this.navTo(this.$('gear').getAttribute('href')); };
     this.$('sideClose').onclick = () => this.closeSide();
     // keys: Esc closes the Zigbee2MQTT drawer, else an open dropdown, else clears the selection · Ctrl-A selects every node
