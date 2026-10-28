@@ -711,18 +711,19 @@ class ZigbeeMapPanel extends HTMLElement {
     let html;
     if (sel) {
       const lq = v => v == null ? '–' : v, multi = this.sel.size > 1, short = n => n.name.length > 18 ? n.name.slice(0, 17) + '…' : n.name;
-      // neighbours of every selected node, merged: one row per device, LQI per selected node it links to (named when several are selected)
+      // neighbours of every selected node, merged: one row per device; with several selected, the best link and its partner
       const nb = new Map();
       for (const s of this.sel) for (const l of this.data.links) {
         const other = l.s === s ? l.t : l.t === s ? l.s : null; if (!other || this.sel.has(other)) continue;
-        const hear = l.s === s ? l.lqS : l.lqT, heard = l.s === s ? l.lqT : l.lqS;
-        const e = nb.get(other) ?? { n: other, best: 0, parts: [] }; e.parts.push(`${lq(hear)} / ${lq(heard)}${multi ? ` <span class="muted">${esc(short(s))}</span>` : ''}`); e.best = Math.max(e.best, l.min || 0); nb.set(other, e);
+        const hear = l.s === s ? l.lqS : l.lqT, heard = l.s === s ? l.lqT : l.lqS, min = l.min || 0;
+        const e = nb.get(other);
+        if (!e || min > e.best) nb.set(other, { n: other, best: min, cell: `${lq(hear)} / ${lq(heard)}${multi ? ` <span class="muted">${esc(short(s))}</span>` : ''}` });
       }
       const rows = [...nb.values()].sort((a, b) => b.best - a.best || a.n.name.localeCompare(b.n.name));
       html = `<table><tr class="head"><th>selected (${this.sel.size})</th><th>links</th><th>type</th><th>LQI hears / is heard</th><th>last seen</th></tr>` +
         [...this.sel].map(s => row(s, '<td></td>')).join('') +
         `<tr class="head sub"><th>neighbours (${rows.length})</th><th></th><th></th><th></th><th></th></tr>` +
-        rows.map(x => row(x.n, `<td class="lq">${x.parts.join('<br>')}</td>`)).join('') + '</table>';
+        rows.map(x => row(x.n, `<td class="lq">${x.cell}</td>`)).join('') + '</table>';
     } else {
       const order = n => n.type === 'Coordinator' ? 0 : n.isEnd ? 2 : 1;
       const list = this.data.nodes.filter(n => !q || n.name.toLowerCase().includes(q)).sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
