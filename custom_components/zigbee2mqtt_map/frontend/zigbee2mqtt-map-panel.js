@@ -251,7 +251,7 @@ const BAR = `
     <h4>Panel</h4>
     <div class="grp">
     <label title="the scan button and status line at the top and these controls at the bottom, within thumb reach on a phone (menus then open upwards)"><input type="checkbox" id="swapBars"> controls at the bottom</label>
-    <div class="row"><button id="png">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept; Shift-click forgets it too, like a first visit)">reset to defaults</button></div>
+    <div class="row"><button id="png">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept)">reset to defaults</button></div>
     </div>
   </div></details>
 <details id="help" class="dd"><summary>help <i class="arr"></i></summary><div class="menu">
@@ -656,11 +656,9 @@ class ZigbeeMapPanel extends HTMLElement {
     $('relayout').onclick = () => this.sim.alpha(0.8).restart();
     $('resetview').onclick = () => { this.svg.transition().duration(300).call(this.zoom.transform, d3.zoomIdentity); };
     $('png').onclick = () => this.savePng();
-    $('resetall').onclick = e => {
+    $('resetall').onclick = () => {
       this._devSort = null;
-      const keys = [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort, LS.hideSet];
-      if (e.shiftKey) keys.push(LS.map);   // Shift: also forget the cached map, i.e. exactly a first visit in this browser
-      for (const k of keys) { try { localStorage.removeItem(k); } catch (e) {} }
+      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort, LS.hideSet]) { try { localStorage.removeItem(k); } catch (e) {} }
       this.sim.stop(); clearTimeout(this._posT); this.data = null; this.selected = null; this.warm = false; this._zoomT = null;
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }
       this.build();   // rebuilds the bar and the graph with defaults; the cached map is re-read from storage
