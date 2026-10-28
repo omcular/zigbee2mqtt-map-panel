@@ -363,7 +363,21 @@ class ZigbeeMapPanel extends HTMLElement {
     };
     window.addEventListener('keydown', this._onKey);
     const dds = [this.$('devs'), this.$('opts'), this.$('help')];
+    // a click on the map while a dropdown is open only closes it: the press, the click and a double-click that start outside are eaten
+    // in the capture phase, so the map underneath neither deselects nor drags, pans or pins
+    const outside = e => { const p = e.composedPath(); return p.includes(this.$('canvas')) ? dds.find(d => d.open && !p.includes(d)) : undefined; };   // map area only; the toolbar keeps working
     r.addEventListener('click', e => { for (const d of dds) if (d.open && !e.composedPath().includes(d)) d.open = false; });
+    let eating = false;
+    for (const type of ['pointerdown', 'mousedown', 'touchstart']) r.addEventListener(type, e => {
+      if (type === 'pointerdown') eating = false;
+      const d = outside(e); if (!d && !eating) return;
+      eating = true; e.stopPropagation(); if (type !== 'touchstart') e.preventDefault();
+    }, true);
+    for (const type of ['click', 'dblclick']) r.addEventListener(type, e => {
+      const d = outside(e);
+      if (d) for (const o of dds) if (!e.composedPath().includes(o)) o.open = false;
+      if (eating || d) { e.stopPropagation(); e.preventDefault(); if (type === 'dblclick' || !d) eating = false; }
+    }, true);
     for (const d of dds) d.addEventListener('toggle', () => { if (d.open) for (const o of dds) if (o !== d) o.open = false; });
     this.$('devs').addEventListener('toggle', () => { if (this.$('devs').open) { this.fillDevices(); this.loadRegistry().then(() => { if (this.$('devs').open) this.fillDevices(); }); } });
     try { await loadD3(); } catch (e) { this.$('status').textContent = e.message; return; }
