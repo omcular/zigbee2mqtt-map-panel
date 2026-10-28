@@ -171,6 +171,7 @@ const STYLE = `
   #lq span.grad b.mk { position:absolute; top:-8px; width:0; height:0; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid var(--primary-text-color,#fff); border-bottom:0; pointer-events:none; }
   #lq span.grad b.mk.off { display:none; }
   #lq span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
+  #tip.touch { pointer-events:auto; }
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:min(380px, calc(100% - 8px)); box-sizing:border-box; overflow-wrap:anywhere; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   #canvas > svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
   #canvas > svg:active { cursor:grabbing; }
@@ -201,7 +202,7 @@ const STYLE = `
 
 const BAR = `
   <ha-menu-button></ha-menu-button>
-  <span id="lq" title="show only links whose weaker direction is above this LQI · press or drag on the bar · far left: show all">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden> <span id="hideV">off</span></span>
+  <span id="lq" title="show only links whose weaker direction is above this LQI · press or drag on the bar · far left: show all">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
   <label>find <input type="text" id="find" placeholder="node name…"></label>
   <details id="devs" class="dd"><summary>devices ▾</summary><div class="menu" id="devMenu"></div></details>
   <details id="opts" class="dd"><summary>options ▾</summary><div class="menu">
@@ -347,6 +348,10 @@ class ZigbeeMapPanel extends HTMLElement {
     }
     this.$('gear').onclick = e => { e.preventDefault(); this.navTo(this.$('gear').getAttribute('href')); };
     this.$('sideClose').onclick = () => this.closeSide();
+    // remember how the last press came in: on touch the tooltip is opened by a tap and then sits under the finger, so it
+    // catches the next tap itself and closes, instead of letting it through to the map
+    this.$('canvas').addEventListener('pointerdown', e => { this._lastPtr = e.pointerType; }, true);
+    for (const type of ['pointerdown', 'mousedown', 'touchstart', 'click']) this.$('tip').addEventListener(type, e => { e.stopPropagation(); if (type !== 'touchstart') e.preventDefault(); if (type === 'pointerdown' || type === 'touchstart') this.hideTip(); }, { passive: false });
     // keys: Esc closes the Zigbee2MQTT drawer, else an open dropdown, else clears the selection · Ctrl-A selects every node
     // on the map · Ctrl-Shift-A clears the selection. Not while typing in a field. Keys typed inside the drawer stay in its
     // frame (another origin): click the map or the drawer's title bar first
@@ -584,7 +589,8 @@ class ZigbeeMapPanel extends HTMLElement {
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
     // Min LQI: the LQI colour bar is the slider, a marker shows the setting, press or drag on the bar sets it
-    this.updLegendMk = () => { const mk = $('lq').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.classList.toggle('off', !(v > 0)); mk.style.left = (v / 2.55) + '%'; };
+    this.updLegendMk = () => { const mk = $('lq').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.classList.toggle('off', !(v > 0)); mk.style.left = (v / 2.55) + '%';
+      $('lq').title = `Min LQI: ${$('hideV').textContent} · shows only links whose weaker direction is above it · press or drag on the bar · far left: show all`; };
     const setFromBar = (g, x) => { const r = g.getBoundingClientRect(), v = Math.max(0, Math.min(255, Math.round(((x - r.left) / r.width) * 255 / 5) * 5)), h = $('hide');
       if (+h.value === v && lsGet(LS.hideSet, false)) return; h.value = v; lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); };
     $('lq').addEventListener('pointerdown', e => {
@@ -746,7 +752,7 @@ class ZigbeeMapPanel extends HTMLElement {
   // labels: none / routers (coordinator included) / all
   // auto: set by the panel (no render here, the caller renders) · otherwise a user choice, remembered
   setMinLqi(v, auto = false) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
-    if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + ' (auto)'; this.updLegendMk?.(); return; }
+    if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + ' (automatic: the redundant threshold)'; this.updLegendMk?.(); return; }
     lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); }
   applyNames() {
     const mode = this.$('names').value;
@@ -878,7 +884,7 @@ class ZigbeeMapPanel extends HTMLElement {
     for (const a of box.querySelectorAll('a[data-nav]')) a.onclick = e => { e.preventDefault(); this.navTo(a.getAttribute('href')); };
     for (const a of box.querySelectorAll('a[data-side]')) a.onclick = e => { if (a.target === '_blank' && (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1)) return; e.preventDefault(); this.$('devs').open = false; this.openZ2m(this.data.byId[a.dataset.side], a.getAttribute('href')); };
   }
-  showTip(e, text, html = false) { const t = this.tip.style('display', 'block'); if (html) t.html(text); else t.text(text); this.moveTip(e); }
+  showTip(e, text, html = false) { const t = this.tip.style('display', 'block').classed('touch', this._lastPtr === 'touch'); if (html) t.html(text); else t.text(text); this.moveTip(e); }
   // tooltip next to the pointer, flipped to the other side when it would leave the canvas, and never outside it (phones)
   moveTip(e) {
     const c = this.$('canvas').getBoundingClientRect(), t = this.tip.node(), w = t.offsetWidth, h = t.offsetHeight, m = 4;

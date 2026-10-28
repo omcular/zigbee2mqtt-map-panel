@@ -5,7 +5,7 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
-- Toolbar: Min LQI is now the LQI colour bar itself: a marker shows the setting, press or drag on the bar to change it
+- Toolbar: Min LQI is now the LQI colour bar itself (value on hover): a marker shows the setting, press or drag on the bar to change it
   (mouse and touch). The bottom legend box is gone; its notes are in the help.
 - Options: "smooth link colours" removed; link colour always runs continuously from red through orange to green.
 - Toolbar: "pull fresh map" is now a download icon button right before the status text.
@@ -16,7 +16,7 @@ section and uses it as the GitHub release notes.
 - Help: each entry as a small heading with its explanation indented below (was a two-column table).
 - Dropdowns stay inside the panel: shifted left when they would stick out, narrower and wrapping on a phone.
 - Node and link tooltips stay inside the map area: flipped to the other side of the pointer near an edge, never cut off
-  on a phone.
+  on a phone. On touch, a tap on an open tooltip closes it instead of reaching the map below.
 - Two-finger twist rotates the map on touch screens (with a small dead zone, so a pinch does not wobble).
 - Cursors: a hand on nodes (they are clicked more than dragged), no question mark on links.
 - A click on the map while a dropdown is open only closes the dropdown (no deselect, drag or pan).
