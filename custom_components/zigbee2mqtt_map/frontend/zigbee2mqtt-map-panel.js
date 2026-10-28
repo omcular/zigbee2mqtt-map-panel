@@ -146,7 +146,7 @@ const STYLE = `
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
   details#devs .menu { --mw:640px; max-height:min(70vh, 640px); overflow:auto; gap:4px; }
-details#devs td.name { white-space:normal; min-width:90px; }
+  details#devs td.name { white-space:normal; min-width:90px; }
 
   details#devs table { border-collapse:collapse; font-size:12px; user-select:none; }
   details#devs tr.sub th { border-top:6px solid var(--panel); }
@@ -156,7 +156,8 @@ details#devs td.name { white-space:normal; min-width:90px; }
   details#devs tr.head + tr td { padding-top:5px; }
   details#devs td { padding:2px 10px 2px 4px; white-space:nowrap; }
   details#devs td.name { cursor:pointer; max-width:260px; overflow:hidden; text-overflow:ellipsis; } details#devs td.name:hover { text-decoration:underline; }
-  details#devs tr.sel td { color:var(--primary-color,#03a9f4); }
+  details#devs td.name { color:var(--primary-color,#03a9f4); }   /* every name selects its node: styled as a link */
+  details#devs tr.sel td.name { font-weight:600; }
   details#devs td.lq { font-variant-numeric:tabular-nums; }
   details#devs a { color:var(--primary-color,#03a9f4); text-decoration:none; margin-right:8px; }
   details#devs a:hover { text-decoration:underline; }
