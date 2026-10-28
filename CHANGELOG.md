@@ -9,8 +9,10 @@ section and uses it as the GitHub release notes.
   both LQI directions, otherwise every device (the "find" text filters it). Click a name to select it on the map;
   "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend, in a drawer over the
   map (Ctrl-click for a new tab).
-- Options: *Zigbee2MQTT frontend URL* (optional) for those Z2M links; the add-on's sidebar path is accepted too and then
-  opens the frontend without the device.
+- Options: *Zigbee2MQTT frontend URL* (optional) for those Z2M links: the add-on's sidebar path (opened through the
+  add-on's ingress, administrators only, nothing to expose) or the frontend's own URL.
+- Panel: multi-select with Ctrl/Shift-click, on the map and in the devices list; the list shows one block per selected
+  device. A few pixels of jitter during a click no longer count as a drag (a Shift-click used to pin the node).
 - Panel: ⚙ top right opens the integration's page in Home Assistant (options, entities, reload).
 - Panel: the selected node survives leaving and re-entering the panel (device page and back).
 - Panel banner says whether a page reload or a Home Assistant restart is needed (files updated without a restart
