@@ -170,6 +170,10 @@ const STYLE = `
   #legend { position:absolute; left:10px; bottom:10px; background:var(--panel); border:1px solid var(--divider-color,#333); border-radius:6px; padding:6px 9px; font-size:11px; color:var(--muted); max-width:min(900px,calc(100% - 40px)); }
   #legend span.sw { display:inline-block; width:20px; height:3px; vertical-align:middle; margin-right:5px; }
   #legend span.grad { position:relative; display:inline-block; width:120px; height:5px; border-radius:2px; vertical-align:middle; margin:0 20px 10px 6px; }
+  #legend span.grad { cursor:pointer; }
+  #legend span.grad::before { content:''; position:absolute; left:-4px; right:-4px; top:-8px; bottom:-14px; }   /* bigger hit area */
+  #legend span.grad b.mk { position:absolute; top:-8px; width:0; height:0; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid var(--primary-text-color,#fff); border-bottom:0; pointer-events:none; }
+  #legend span.grad b.mk.off { display:none; }
   #legend span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:380px; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   #canvas > svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
@@ -266,7 +270,7 @@ const BAR = `
 
 const LEGEND_TAIL = `<span class="sw" style="height:0;border-top:2px dashed #999"></span>one side only &nbsp;·&nbsp; a / b = what left hears / what right hears &nbsp;·&nbsp; see "help ▾"`;
 const legendHtml = smooth => smooth
-  ? `<div><span class="grad" style="background:${LQ_GRADIENT}"><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span>LQI &nbsp; ${LEGEND_TAIL}</div>`
+  ? `<div><span class="grad" title="click: set Min LQI here" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span>LQI &nbsp; ${LEGEND_TAIL}</div>`
   : `<div><span class="sw" style="background:${LQ.green}"></span>LQI ≥ 80 &nbsp; <span class="sw" style="background:${LQ.orange}"></span>50–79 &nbsp; <span class="sw" style="background:${LQ.red}"></span>&lt; 50 &nbsp; ${LEGEND_TAIL}</div>`;
 const LEGEND = legendHtml(true);
 
@@ -586,12 +590,18 @@ class ZigbeeMapPanel extends HTMLElement {
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
     $('showEnd').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
-    const applySmooth = () => { smoothColours = $('smooth').checked; $('legend').innerHTML = legendHtml(smoothColours); this.gl?.selectAll('g.link line.vis').attr('stroke', l => l.oneSided ? LQ.grey : lqColor(l.min)); };
+    const applySmooth = () => { smoothColours = $('smooth').checked; $('legend').innerHTML = legendHtml(smoothColours); this.updLegendMk?.(); this.gl?.selectAll('g.link line.vis').attr('stroke', l => l.oneSided ? LQ.grey : lqColor(l.min)); };
     $('smooth').onchange = applySmooth; applySmooth();
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
-    $('hide').oninput = e => { if (e.isTrusted) lsSet(LS.hideSet, true); $('hideV').textContent = hideLabel(+$('hide').value); this.render(); };
+    // the legend's colour bar doubles as a Min LQI slider: a marker shows the setting, a click sets it
+    this.updLegendMk = () => { const mk = $('legend').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.classList.toggle('off', !(v > 0)); mk.style.left = (v / 2.55) + '%'; };
+    $('legend').addEventListener('click', e => { const g = e.target.closest?.('span.grad'); if (!g) return; const r = g.getBoundingClientRect();
+      const v = Math.max(0, Math.min(255, Math.round(((e.clientX - r.left) / r.width) * 255 / 5) * 5)); const h = $('hide');
+      h.value = v; lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); });
+    this.updLegendMk();
+    $('hide').oninput = e => { if (e.isTrusted) lsSet(LS.hideSet, true); $('hideV').textContent = hideLabel(+$('hide').value); this.updLegendMk(); this.render(); };
     $('spring').value = this.spring; $('springV').textContent = this.spring.toFixed(1);
     $('spring').oninput = () => { this.spring = +$('spring').value; $('springV').textContent = this.spring.toFixed(1); lsSet(LS.spring, this.spring); this.sim.force('link').distance(dist); this.sim.force('charge').strength(charge); this.sim.alpha(0.5).restart(); };
     $('avoid').value = this.avoid; $('avoidV').textContent = this.avoid.toFixed(1);
@@ -741,7 +751,7 @@ class ZigbeeMapPanel extends HTMLElement {
   // labels: none / routers (coordinator included) / all
   // auto: set by the panel (no render here, the caller renders) · otherwise a user choice, remembered
   setMinLqi(v, auto = false) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
-    if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + ' (auto)'; return; }
+    if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + ' (auto)'; this.updLegendMk?.(); return; }
     lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); }
   applyNames() {
     const mode = this.$('names').value;
