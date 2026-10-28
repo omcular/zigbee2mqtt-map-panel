@@ -8,7 +8,10 @@ section and uses it as the GitHub release notes.
 - Panel: **devices ▾** dropdown in the toolbar. With a node selected it lists that device and its neighbours with
   both LQI directions, otherwise every device (the "find" text filters it). Click a name to select it on the map;
   "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend.
-- Options: *Zigbee2MQTT frontend URL* (optional) for those Z2M links.
+- Options: *Zigbee2MQTT frontend URL* (optional) for those Z2M links; the add-on's sidebar path is accepted too and then
+  opens the frontend without the device.
+- Panel: ⚙ top right opens the integration's page in Home Assistant (options, entities, reload).
+- Panel: the selected node survives leaving and re-entering the panel (device page and back).
 - Panel banner says whether a page reload or a Home Assistant restart is needed (files updated without a restart
   showed a permanent "reload" banner before).
 - `tools/release_map.sh` waits for one workflow run per workflow file (it hung waiting for a third run).

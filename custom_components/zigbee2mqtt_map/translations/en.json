@@ -26,7 +26,7 @@
           "base_topic": "Zigbee2MQTT base topic",
           "sidebar_title": "Sidebar title",
           "require_admin": "Administrators only",
-          "z2m_url": "Zigbee2MQTT frontend URL (optional, e.g. http://homeassistant:8099; enables the Z2M links in the panel's device list)"
+          "z2m_url": "Zigbee2MQTT frontend URL, optional: the panel's device list links to it. http://homeassistant:8099 (the add-on's frontend port) opens the device directly; the add-on's sidebar path such as /9336c2b0_zigbee2mqtt only opens the frontend"
         }
       }
     },

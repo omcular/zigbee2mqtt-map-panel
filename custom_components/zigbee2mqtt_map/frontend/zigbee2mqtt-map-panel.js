@@ -10,7 +10,7 @@ const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan
 const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
-const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1' };
+const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1' };
 
 let d3Ready;
 function loadD3() {
@@ -114,6 +114,7 @@ const STYLE = `
   #bar button:hover { border-color:#888; }
   #bar button.primary { border-color:var(--primary-color,#03a9f4); color:var(--primary-color,#03a9f4); }
   #status { color:var(--muted); margin-left:auto; }
+  #gear { color:var(--muted); text-decoration:none; font-size:17px; line-height:1; padding:0 2px; } #gear:hover { color:var(--primary-text-color,#fff); }
   #stale { display:none; flex-basis:100%; padding:6px 10px; background:var(--warning-color,#f5a623); color:#000; border-radius:4px; }
   #stale.show { display:block; }
   #stale button { margin-left:10px; font:inherit; padding:2px 10px; border-radius:4px; border:1px solid #0006; background:#fff8; cursor:pointer; }
@@ -215,7 +216,8 @@ const BAR = `
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
       <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
-      <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map. "Z2M" opens the device in the Zigbee2MQTT frontend (set its URL in the integration's options), "HA" opens its device page in Home Assistant</dd>
+      <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map. "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend: enter the frontend's URL (e.g. http://homeassistant:8099) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too but only opens the frontend, not the device</dd>
+      <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
     </dl>
     <h4>Reading the map</h4>
     <dl>
@@ -240,6 +242,7 @@ const BAR = `
     <p class="ver">zigbee2mqtt-map-panel v${VERSION}</p>
   </div></details>
   <span id="status"></span>
+  <a id="gear" href="/config/integrations/integration/zigbee2mqtt_map" data-nav title="integration settings: Zigbee2MQTT frontend URL, sidebar title, administrators only · entities, reload">⚙</a>
   <div id="stale"><span id="staleMsg"></span><button id="reload">reload</button></div>`;
 
 const LEGEND_TAIL = `<span class="sw" style="height:0;border-top:2px dashed #999"></span>one side only &nbsp;·&nbsp; a / b = what left hears / what right hears &nbsp;·&nbsp; see "help ▾"`;
@@ -285,6 +288,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.$ = id => r.getElementById(id);
     this.$('pull').onclick = () => this.pull();
     this.$('reload').onclick = () => location.reload();
+    this.$('gear').onclick = e => { e.preventDefault(); this.navTo(this.$('gear').getAttribute('href')); };
     const dds = [this.$('devs'), this.$('opts'), this.$('help')];
     r.addEventListener('click', e => { for (const d of dds) if (d.open && !e.composedPath().includes(d)) d.open = false; });
     for (const d of dds) d.addEventListener('toggle', () => { if (d.open) for (const o of dds) if (o !== d) o.open = false; });
@@ -352,7 +356,7 @@ class ZigbeeMapPanel extends HTMLElement {
     scan.tick = setInterval(() => { st.textContent = `scan running (${kind})… ${Math.round((Date.now() - t0) / 1000)} s${scan.progress} (leaving the page is fine, the result is kept by Home Assistant)`; }, 1000);
   }
   endScan() { if (!this._scan) return; clearInterval(this._scan.tick); this._scan = null; this.$('pull').disabled = false; }
-  disconnectedCallback() { clearInterval(this._liveT); this._liveT = null; this.savePos(); this.saveView(); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
+  disconnectedCallback() { clearInterval(this._liveT); this._liveT = null; this.savePos(); this.saveView(); lsSet(LS.sel, this.selected?.id ?? null); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
 
   // ask the integration for a scan; the result, progress and errors arrive as events on the subscription
   async pull() {
@@ -368,6 +372,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const { nodes, links } = mergeMap(map);
     const saved = lsGet(LS.pos, {}), now = Date.now(); let seeded = 0;
     // keep live positions of nodes that already exist
+    const firstMap = !this.data;   // first map of this visit: restore the selection the last visit left behind
     const old = this.data ? Object.fromEntries(this.data.nodes.map(n => [n.id, n])) : {};
     for (const n of nodes) {
       n.isEnd = n.type === 'EndDevice' || n.type === 'Unknown';
@@ -388,7 +393,9 @@ class ZigbeeMapPanel extends HTMLElement {
       const rels = [l.relS, l.relT].filter(r => r != null); l.sibling = rels.length > 0 && rels.every(r => r === 2);
     }
     this.data = { nodes, links, byId, fetchedAt };
-    this.selected = this.selected ? byId[this.selected.id] ?? null : null;   // a new scan keeps the current selection if the node still exists
+    const wantSel = this.selected ? this.selected.id : (firstMap ? lsGet(LS.sel, null) : null);
+    this.selected = wantSel ? byId[wantSel] ?? null : null;   // a new scan keeps the current selection if the node still exists
+    if (firstMap && this.selected) this._selOnly = true;
     const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator').length, ends = nodes.filter(n => n.isEnd).length;
     const mesh = meshThresholds(nodes, links); this.mesh = mesh;
     const st = this.$('status'); st.textContent = `map ${new Date(fetchedAt).toLocaleString()} · ${routers} routers, ${ends} end devices, ${links.length} links`;
@@ -470,7 +477,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('resetview').onclick = () => { this.svg.transition().duration(300).call(this.zoom.transform, d3.zoomIdentity); };
     $('png').onclick = () => this.savePng();
     $('resetall').onclick = () => {
-      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view]) { try { localStorage.removeItem(k); } catch (e) {} }
+      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel]) { try { localStorage.removeItem(k); } catch (e) {} }
       const keep = this.data ? { map: lsGet(LS.map, null) } : null;
       this.sim.stop(); clearTimeout(this._posT); this.data = null; this.selected = null; this.warm = false; this._zoomT = null;
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }
@@ -631,6 +638,8 @@ class ZigbeeMapPanel extends HTMLElement {
     this.glq.selectAll('text').classed('dim', l => !linkOn(l));
     if (this.$('devs')?.open) this.fillDevices();
   }
+  // HA is a single-page app: navigate without a page load; the panel keeps its state through savePos/saveView/selection on disconnect
+  navTo(href) { history.pushState(null, '', href); window.dispatchEvent(new CustomEvent('location-changed', { bubbles: true, composed: true })); }
   // ---- devices list: the selected node and its neighbours, or everything ----
   get z2mUrl() { return String(this._panel?.config?.z2m_url || '').trim().replace(/\/+$/, ''); }
   // HA device ids of the Zigbee2MQTT devices: Z2M's discovery identifiers are "zigbee2mqtt_<ieee>" (the bridge: "zigbee2mqtt_bridge_<ieee>")
@@ -647,7 +656,10 @@ class ZigbeeMapPanel extends HTMLElement {
     if (!this.data) { box.innerHTML = '<div class="muted">no map yet</div>'; return; }
     const sel = this.selected, reg = this._reg || {}, z2m = this.z2mUrl, q = this.$('find').value.trim().toLowerCase();
     const seen = n => n.lastSeen ? ago(Date.now() - n.lastSeen) : (n.type === 'Coordinator' ? '' : '?');
-    const linksFor = n => (z2m ? `<a href="${z2m}/#/device/${encodeURIComponent(n.id)}/info" target="_blank" rel="noopener" title="open in the Zigbee2MQTT frontend">Z2M</a>` : '') +
+    const z2mLink = n => !z2m ? '' : z2m.startsWith('/')
+      ? `<a href="${esc(z2m)}" data-nav title="open the Zigbee2MQTT frontend (an ingress path cannot open the device directly; enter the frontend's own URL for that)">Z2M</a>`
+      : `<a href="${esc(z2m)}/#/device/${encodeURIComponent(n.id)}/info" target="_blank" rel="noopener" title="open the device in the Zigbee2MQTT frontend">Z2M</a>`;
+    const linksFor = n => z2mLink(n) +
       (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
     const row = (n, extra = '') => `<tr data-id="${esc(n.id)}" class="${n === sel ? 'sel' : ''}"><td class="name" title="${esc(n.id)}">${esc(n.name)}</td><td class="muted">${esc(n.type === 'EndDevice' ? 'end device' : n.type.toLowerCase())}</td>${extra}<td class="muted">${esc(seen(n))}</td><td>${linksFor(n)}</td></tr>`;
     let html;
@@ -664,11 +676,10 @@ class ZigbeeMapPanel extends HTMLElement {
       const list = this.data.nodes.filter(n => !q || n.name.toLowerCase().includes(q)).sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
       html = `<table><tr><th>device (${list.length})</th><th></th><th>last seen</th><th></th></tr>` + list.map(n => row(n)).join('') + '</table>';
     }
-    if (!z2m) html += '<div class="muted">Zigbee2MQTT links: set the frontend URL in the integration\'s options</div>';
+    if (!z2m) html += '<div class="muted">Zigbee2MQTT links: enter the frontend URL in the integration\'s options (⚙ top right)</div>';
     box.innerHTML = html;
     for (const td of box.querySelectorAll('td.name')) td.onclick = () => { const n = this.data.byId[td.parentElement.dataset.id]; if (!n) return; this.selected = this.selected === n ? null : n; this._selOnly = true; this.render(); };
-    // HA is a single-page app: navigate without a page load, the panel state is kept by savePos/saveView on disconnect
-    for (const a of box.querySelectorAll('a[data-nav]')) a.onclick = e => { e.preventDefault(); history.pushState(null, '', a.getAttribute('href')); window.dispatchEvent(new CustomEvent('location-changed', { bubbles: true, composed: true })); };
+    for (const a of box.querySelectorAll('a[data-nav]')) a.onclick = e => { e.preventDefault(); this.navTo(a.getAttribute('href')); };
   }
   showTip(e, text, html = false) { const t = this.tip.style('display', 'block'); if (html) t.html(text); else t.text(text); this.moveTip(e); }
   moveTip(e) { const c = this.$('canvas').getBoundingClientRect(); this.tip.style('left', Math.min(e.clientX - c.left + 14, c.width - 400) + 'px').style('top', (e.clientY - c.top + 14) + 'px'); }
