@@ -10,7 +10,7 @@ const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan
 const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
-const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1', avoid: 'z2m_map_avoid', devSort: 'z2m_map_devsort_v1' };
+const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1', avoid: 'z2m_map_avoid', devSort: 'z2m_map_devsort_v1', hideSet: 'z2m_map_hide_user' };
 
 let d3Ready;
 function loadD3() {
@@ -226,7 +226,7 @@ const BAR = `
       <dt><kbd>Ctrl</kbd>-drag · middle-drag</dt><dd>rotate the whole map around the centre of the view; positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
-      <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map, <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
+      <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map (again: none), <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
       <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
       <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
@@ -247,7 +247,7 @@ const BAR = `
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
       <dt>pull fresh map</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
-      <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Bad links are easiest found by colour with the slider at off</dd>
+      <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Until you move it, it follows the "redundant" threshold ("auto"): the mesh first, marginal links on demand. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
@@ -358,7 +358,7 @@ class ZigbeeMapPanel extends HTMLElement {
       if (typing || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
       e.preventDefault();
       if (e.shiftKey) this.selected = null;
-      else { const shown = new Set(); this.gn.selectAll('g.node').each(d => shown.add(d)); this.sel = shown; }
+      else { const shown = new Set(); this.gn.selectAll('g.node').each(d => shown.add(d)); this.sel = [...shown].every(n => this.sel.has(n)) ? new Set() : shown; }
       this._selOnly = true; this.render();
     };
     window.addEventListener('keydown', this._onKey);
@@ -485,6 +485,9 @@ class ZigbeeMapPanel extends HTMLElement {
       mk('connected', mesh.connected, tipC); st.append(', '); mk('redundant', mesh.redundant, tipR);
     }
     if (!(seeded > 0)) this.warm = false;
+    // a first look should show the mesh, not every marginal link: until the user picks a Min LQI, follow the "redundant"
+    // threshold (the links below it are the ones nothing depends on)
+    if (mesh?.redundant > 0 && !lsGet(LS.hideSet, false)) this.setMinLqi(mesh.redundant, true);
     this.render();
   }
 
@@ -540,7 +543,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
-    $('hide').oninput = () => { $('hideV').textContent = hideLabel(+$('hide').value); this.render(); };
+    $('hide').oninput = e => { if (e.isTrusted) lsSet(LS.hideSet, true); $('hideV').textContent = hideLabel(+$('hide').value); this.render(); };
     $('spring').value = this.spring; $('springV').textContent = this.spring.toFixed(1);
     $('spring').oninput = () => { this.spring = +$('spring').value; $('springV').textContent = this.spring.toFixed(1); lsSet(LS.spring, this.spring); this.sim.force('link').distance(dist); this.sim.force('charge').strength(charge); this.sim.alpha(0.5).restart(); };
     $('avoid').value = this.avoid; $('avoidV').textContent = this.avoid.toFixed(1);
@@ -556,7 +559,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('png').onclick = () => this.savePng();
     $('resetall').onclick = () => {
       this._devSort = null;
-      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort]) { try { localStorage.removeItem(k); } catch (e) {} }
+      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort, LS.hideSet]) { try { localStorage.removeItem(k); } catch (e) {} }
       const keep = this.data ? { map: lsGet(LS.map, null) } : null;
       this.sim.stop(); clearTimeout(this._posT); this.data = null; this.selected = null; this.warm = false; this._zoomT = null;
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }
@@ -688,7 +691,10 @@ class ZigbeeMapPanel extends HTMLElement {
   // constant width: colour alone carries the LQI; one-sided links are hairlines
   linkWidth(l) { return l.oneSided ? 0.8 : 3; }
   // labels: none / routers (coordinator included) / all
-  setMinLqi(v) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5); h.dispatchEvent(new Event('input')); }
+  // auto: set by the panel (no render here, the caller renders) · otherwise a user choice, remembered
+  setMinLqi(v, auto = false) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
+    if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + ' (auto)'; return; }
+    lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); }
   applyNames() {
     const mode = this.$('names').value;
     this.gn?.selectAll('g.node text').style('display', d => mode === 'all' || (mode === 'routers' && !d.isEnd) ? null : 'none');

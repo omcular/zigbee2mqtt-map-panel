@@ -5,9 +5,11 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- Min LQI starts at the mesh's "redundant" threshold (shown as *auto*) until you move the slider, so a first look
+  shows the mesh instead of every marginal link. "reset to defaults" brings the automatic value back.
 - Devices list: sortable by name, type, LQI (weaker direction first, then the stronger) and last seen.
 - Keys: Esc closes the Zigbee2MQTT drawer, else an open dropdown, else clears the selection; Ctrl-A selects every node
-  on the map, Ctrl-Shift-A clears the selection (not while typing in a field).
+  on the map (again: none), Ctrl-Shift-A clears the selection (not while typing in a field).
 - Layout: nodes are pushed off links they do not belong to, and those links bend away (options: *keep nodes off
   links*, 0 turns it off).
 - README: `networkmap_fast` is merged into zigbee2mqtt-user-extensions, link to it there.
