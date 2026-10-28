@@ -661,7 +661,6 @@ class ZigbeeMapPanel extends HTMLElement {
       const keys = [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort, LS.hideSet];
       if (e.shiftKey) keys.push(LS.map);   // Shift: also forget the cached map, i.e. exactly a first visit in this browser
       for (const k of keys) { try { localStorage.removeItem(k); } catch (e) {} }
-      const keep = this.data ? { map: lsGet(LS.map, null) } : null;
       this.sim.stop(); clearTimeout(this._posT); this.data = null; this.selected = null; this.warm = false; this._zoomT = null;
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }
       this.build();   // rebuilds the bar and the graph with defaults; the cached map is re-read from storage
