@@ -202,7 +202,9 @@ const STYLE = `
   .link line.hit { stroke:transparent; stroke-width:6px; }
   .link.dim, .lql.dim { opacity:0.3; }
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
-  .lql { font-size:9px; fill:var(--primary-text-color,#c7cdd8); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
+  .lql { pointer-events:none; }
+  .lql text { font-size:9px; font-weight:600; fill:#10131a; }
+  .lql rect { stroke:var(--bgc); stroke-width:1px; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node.end text { font-size:9.5px; fill:var(--muted); }
   .node, .node * { cursor:pointer; }   /* a node is clicked (select) far more often than dragged */
@@ -636,7 +638,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('showEnd').onchange = () => this.render();
     const routesLabel = () => { const v = +$('showRoutes').value; $('showRoutesV').textContent = v > 0 ? v.toFixed(1) : 'off'; };
     $('showRoutes').oninput = () => { routesLabel(); this.render(); }; routesLabel(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
-    $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
+    $('showLql').onchange = () => { this.glq.selectAll('g.lql').style('display', $('showLql').checked ? null : 'none'); this.sizeLabels(); };
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
@@ -749,8 +751,12 @@ class ZigbeeMapPanel extends HTMLElement {
       .on('mouseenter', (e, l) => this._pinned || !$('hoverTips').checked || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
         esc(`${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})`) + (l.routes.length ? routesHtml(l) : ''), true))
       .on('mousemove', e => { if (!this._pinned) this.moveTip(e); }).on('mouseleave', () => { if (!this._pinned) this.hideTip(); });
-    const lql = this.glq.selectAll('text').data(links, key); lql.exit().remove();
-    lql.enter().append('text').attr('class', 'lql').attr('text-anchor', 'middle').attr('dy', -4).merge(lql).text(l => `${fmt(l.lqS)} / ${fmt(l.lqT)}`).style('display', $('showLql').checked ? null : 'none');
+    // LQI label: a pill in the link's colour with the two values, centred on the link and turned along it
+    const lql = this.glq.selectAll('g.lql').data(links, key); lql.exit().remove();
+    const lqe = lql.enter().append('g').attr('class', 'lql'); lqe.append('rect').attr('rx', 4); lqe.append('text').attr('text-anchor', 'middle').attr('dominant-baseline', 'central');
+    const lqm = lqe.merge(lql).style('display', $('showLql').checked ? null : 'none');
+    lqm.select('rect').attr('fill', color); lqm.select('text').text(l => `${fmt(l.lqS)} / ${fmt(l.lqT)}`);
+    this.sizeLabels();
     const node = this.gn.selectAll('g.node').data(nodes, n => n.id); node.exit().remove();
     const ne = node.enter().append('g').attr('class', 'node').call(d3.drag()
       .on('start', (e, d) => { d._moved = false; d._wasPinned = d.fx != null; d._x0 = e.x; d._y0 = e.y; d.fx = d.x; d.fy = d.y; })
@@ -858,6 +864,13 @@ class ZigbeeMapPanel extends HTMLElement {
     const mode = this.$('names').value;
     this.gn?.selectAll('g.node text').style('display', d => mode === 'all' || (mode === 'routers' && !d.isEnd) ? null : 'none');
   }
+  // the label pill takes the size of its text (measured once per render; a hidden text has no size, so only when shown)
+  sizeLabels() {
+    if (!this.$('showLql').checked) return;
+    this.glq.selectAll('g.lql').each(function () { const t = this.querySelector('text'), r = this.querySelector('rect'); let w = 30, h = 11;
+      try { const b = t.getBBox(); if (b.width > 0) { w = b.width + 8; h = b.height + 2; } } catch (e) {}
+      r.setAttribute('x', -w / 2); r.setAttribute('y', -h / 2); r.setAttribute('width', w); r.setAttribute('height', h); });
+  }
   draw() {
     // each link runs from rim to rim of its own two nodes (gap = node radius), so a link passing under a third node is not cut
     const ro = this.routesOn(), self = this;
@@ -879,8 +892,9 @@ class ZigbeeMapPanel extends HTMLElement {
     });
     // label text: what the left-hand node hears / what the right-hand node hears, whichever end that is on screen
     const fmt = v => v == null ? '–' : v;
-    this.glq.selectAll('text').text(l => l.source.x <= l.target.x ? `${fmt(l.lqS)} / ${fmt(l.lqT)}` : `${fmt(l.lqT)} / ${fmt(l.lqS)}`).attr('transform', l => { const dx = l.target.x - l.source.x, dy = l.target.y - l.source.y; let a = Math.atan2(dy, dx) * 180 / Math.PI; if (a > 90 || a < -90) a += 180;   // never upside down
-      return `translate(${(l.source.x + l.target.x) / 2},${(l.source.y + l.target.y) / 2}) rotate(${a})`; });
+    this.glq.selectAll('g.lql').attr('transform', l => { const dx = l.target.x - l.source.x, dy = l.target.y - l.source.y; let a = Math.atan2(dy, dx) * 180 / Math.PI; if (a > 90 || a < -90) a += 180;   // never upside down
+      return `translate(${(l.source.x + l.target.x) / 2},${(l.source.y + l.target.y) / 2}) rotate(${a})`; })
+      .select('text').text(l => l.source.x <= l.target.x ? `${fmt(l.lqS)} / ${fmt(l.lqT)}` : `${fmt(l.lqT)} / ${fmt(l.lqS)}`);
     this.gn.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`).classed('pinned', d => d.fx != null);
   }
   applySel() {
@@ -896,7 +910,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.gl.selectAll('g.link').classed('onpath', l => onPath.has(l));
     this.gn.selectAll('g.node').classed('dim', d => active && !active.has(d.id)).classed('sel', d => this.sel.has(d) || (matches && matches.has(d.id) && !sel));
     this.gl.selectAll('g.link').classed('dim', l => !linkOn(l));
-    this.glq.selectAll('text').classed('dim', l => !linkOn(l));
+    this.glq.selectAll('g.lql').classed('dim', l => !linkOn(l));
     if (this.$('devs')?.open) this.fillDevices();
   }
   // keep a dropdown inside the panel: as wide as it wants up to the panel width (minus a margin), shifted left when it would
