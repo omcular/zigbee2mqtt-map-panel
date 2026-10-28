@@ -876,18 +876,25 @@ class ZigbeeMapPanel extends HTMLElement {
   spaceLabels() {
     if (!this.$('showLql').checked || !this.data) return;
     const ls = this.data.links.filter(l => l._lw && l.source.x != null), P = [];
-    for (const l of ls) { const t = l._lt ?? 0.5; P.push({ l, x: l.source.x + (l.target.x - l.source.x) * t, y: l.source.y + (l.target.y - l.source.y) * t, r: l._lw * 0.5 }); }
+    for (const l of ls) { const t = l._lt ?? 0.5; l._lhit = false; P.push({ l, x: l.source.x + (l.target.x - l.source.x) * t, y: l.source.y + (l.target.y - l.source.y) * t, r: l._lw * 0.5 }); }
     for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
       const a = P[i], b = P[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), min = (a.r + b.r) * 0.85;
       if (d >= min || d === 0) continue;
-      // each pill moves along its own link, away from the other pill
+      // each pill moves along its own link, away from the other pill. The direction is remembered while the pill keeps
+      // colliding, so two pills do not take turns flipping sides (that oscillated); steps shrink as the overlap shrinks
       for (const [p, sx, sy] of [[a, -dx, -dy], [b, dx, dy]]) {
         const l = p.l, ux = l.target.x - l.source.x, uy = l.target.y - l.source.y, len = Math.hypot(ux, uy) || 1;
-        const dir = Math.sign(sx * ux + sy * uy) || 1;
-        l._lt = Math.max(0.2, Math.min(0.8, (l._lt ?? 0.5) + dir * Math.min(0.03, (min - d) / len)));
+        if (!l._ldir) l._ldir = Math.sign(sx * ux + sy * uy) || 1;
+        const t = (l._lt ?? 0.5) + l._ldir * Math.min(0.02, 0.4 * (min - d) / len);
+        l._lt = Math.max(0.2, Math.min(0.8, t)); l._lhit = true;   // at the end of the allowed stretch it simply stays (no flipping back and forth)
       }
     }
-    for (const l of ls) if (l._lt != null) l._lt += (0.5 - l._lt) * 0.04;
+    // free pills drift back toward the middle, but only into space that is free (with a margin), so a pill never moves
+    // back into the collision that pushed it out: the arrangement settles instead of cycling
+    const clear = (l, t) => { const x = l.source.x + (l.target.x - l.source.x) * t, y = l.source.y + (l.target.y - l.source.y) * t, r = l._lw * 0.5;
+      for (const q of P) if (q.l !== l && Math.hypot(q.x - x, q.y - y) < (r + q.r) * 0.95) return false; return true; };
+    for (const l of ls) if (!l._lhit) { l._lfree = (l._lfree || 0) + 1; if (l._lfree > 30) l._ldir = 0;
+      if (l._lt != null && l._lfree > 10 && Math.abs(l._lt - 0.5) > 0.002) { const t = l._lt + (0.5 - l._lt) * 0.03; if (clear(l, t)) l._lt = t; } } else l._lfree = 0;
   }
   draw() {
     // each link runs from rim to rim of its own two nodes (gap = node radius), so a link passing under a third node is not cut
