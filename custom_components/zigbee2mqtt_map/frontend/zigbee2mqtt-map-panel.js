@@ -406,7 +406,11 @@ class ZigbeeMapPanel extends HTMLElement {
       (bg > 0 ? `background: every ${bg} h` : 'background: off') + ' · ' + (live > 0 ? `viewing: every ${live} min` : 'viewing: off') + (this.fast ? ' · networkmap_fast topic' : '') + ` · Z2M topic: ${this.baseTopic}`;
   }
   // while the panel is open and visible: request a scan once the live interval has passed since the last request anywhere
+  // the map's age in the status line ("33m ago"), the exact time on hover; refreshed by the 15 s tick
+  tickAge() { const a = this.$?.('mapAge'); if (!a) return; const ms = Date.now() - +a.dataset.t;
+    a.textContent = ms < 60e3 ? 'just now' : ms < 3600e3 ? `${Math.floor(ms / 60e3)}m ago` : ms < 86400e3 ? `${Math.floor(ms / 3600e3)}h ago` : `${Math.floor(ms / 86400e3)}d ago`; }
   liveTick() {
+    this.tickAge();
     if (!this.isConnected || document.visibilityState !== 'visible' || !this._hass || this._scan) return;
     const live = this.setting(SET.live); if (!(live > 0)) return;
     const last = Math.max(this.lastRequestMs(), this.data ? (Date.parse(this.data.fetchedAt) || 0) : 0);
@@ -488,7 +492,9 @@ class ZigbeeMapPanel extends HTMLElement {
     if (firstMap && this.sel.size) this._selOnly = true;
     const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator').length, ends = nodes.filter(n => n.isEnd).length;
     const mesh = meshThresholds(nodes, links); this.mesh = mesh;
-    const st = this.$('status'); st.textContent = `map ${new Date(fetchedAt).toLocaleString()} · ${routers} routers, ${ends} end devices, ${links.length} links`;
+    const st = this.$('status'); st.textContent = 'map ';
+    const age = document.createElement('span'); age.id = 'mapAge'; age.dataset.t = new Date(fetchedAt).getTime(); age.title = new Date(fetchedAt).toLocaleString();
+    st.append(age, ` · ${routers} routers, ${ends} end devices, ${links.length} links`); this.tickAge();
     if (mesh) {
       const nm = id => byId[id]?.name ?? id;
       const tipC = `every router reaches the coordinator over links of LQI ${mesh.connected} or better (weaker direction)` +
