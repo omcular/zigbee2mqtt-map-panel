@@ -26,7 +26,13 @@
           "base_topic": "Zigbee2MQTT base topic",
           "sidebar_title": "Sidebar title",
           "require_admin": "Administrators only",
-          "z2m_url": "Zigbee2MQTT frontend, optional: the panel's device list opens devices there. Either the add-on's sidebar path (e.g. /45df7312_zigbee2mqtt, through its ingress, administrators only) or the frontend's own URL (e.g. http://homeassistant:8099, the add-on's frontend port)"
+          "z2m_url": "Zigbee2MQTT frontend (optional)"
+        },
+        "data_description": {
+          "base_topic": "The topic Zigbee2MQTT publishes under; found on the broker when the integration was set up.",
+          "sidebar_title": "Name of the panel in the sidebar.",
+          "require_admin": "Only administrators see the panel.",
+          "z2m_url": "Lets the panel open devices in Zigbee2MQTT. Either the add-on's sidebar path, e.g. /45df7312_zigbee2mqtt (through its ingress, administrators only), or the frontend's own URL, e.g. http://homeassistant:8099 (the add-on's frontend port)."
         }
       }
     },
