@@ -129,20 +129,21 @@ const STYLE = `
   details.dd { position:relative; }
   details.dd summary { list-style:none; cursor:pointer; background:var(--bgc); border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 8px; user-select:none; }
   details.dd summary::-webkit-details-marker { display:none; }
-  details.dd .menu { position:absolute; top:calc(100% + 4px); left:0; z-index:6; display:flex; flex-direction:column; gap:8px; min-width:250px; padding:10px 12px; background:var(--panel); border:1px solid var(--divider-color,#444); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.4); }
+  details.dd .menu { position:absolute; top:calc(100% + 4px); left:0; z-index:6; display:flex; flex-direction:column; gap:8px; box-sizing:border-box; min-width:min(var(--mw,250px), var(--avail,100vw)); max-width:var(--avail,100vw); padding:10px 12px; background:var(--panel); border:1px solid var(--divider-color,#444); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.4); }
   details.dd .menu .row { display:flex; gap:6px; flex-wrap:wrap; }
   details.dd .menu .sep { border-top:1px solid var(--divider-color,#444); margin:2px 0; }
   details.dd .menu .note { color:var(--muted); font-size:11px; }
   details.dd .menu select { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:2px 4px; }
   details.dd .menu input[type=number] { width:64px; background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:2px 4px; }
-  details#help .menu { min-width:min(560px, calc(100vw - 40px)); gap:6px; font-size:12px; line-height:1.45; }
+  details#help .menu { --mw:560px; gap:6px; font-size:12px; line-height:1.45; }
   details#help h4 { margin:4px 0 0; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
   details#help dl { display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; margin:0; }
   details#help dt { color:var(--primary-text-color); white-space:nowrap; }
   details#help dd { margin:0; color:var(--muted); }
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
-  details#devs .menu { min-width:min(640px, calc(100vw - 40px)); max-height:min(70vh, 640px); overflow:auto; gap:4px; }
+  details#devs .menu { --mw:640px; max-height:min(70vh, 640px); overflow:auto; gap:4px; }
+  details#help dt { white-space:normal; } details#devs td.name { white-space:normal; min-width:90px; }
   details#devs table { border-collapse:collapse; font-size:12px; user-select:none; }
   details#devs tr.sub th { border-top:6px solid var(--panel); }
   details#devs th[data-sort] { cursor:pointer; } details#devs th[data-sort]:hover { color:var(--primary-text-color,#fff); } details#devs th.sorted { color:var(--primary-text-color,#fff); }
@@ -171,15 +172,15 @@ const STYLE = `
   #tip .title { font-size:16px; font-weight:600; line-height:1.2; margin-bottom:2px; }
   #canvas { position:relative; flex:1; height:calc(100% - var(--barh,44px)); }
   .link line.vis { stroke-linecap:round; pointer-events:none; }
-  .link line.hit { stroke:transparent; stroke-width:6px; cursor:help; }
+  .link line.hit { stroke:transparent; stroke-width:6px; }
   .link.dim, .lql.dim { opacity:0.3; }
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
   .lql { font-size:9px; fill:var(--primary-text-color,#c7cdd8); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node.end text { font-size:9.5px; fill:var(--muted); }
-  .node .shape, .node .ring { cursor:move; }
-  .node image.img { cursor:move; }
-  .node circle.imgbg { fill:transparent; cursor:move; }   /* hit area + selection/pin ring only; own links stop at the rim (see draw) */
+  .node, .node * { cursor:pointer; }   /* a node is clicked (select) far more often than dragged */
+  svg:active .node, svg:active .node * { cursor:grabbing; }
+  .node circle.imgbg { fill:transparent; }   /* hit area + selection/pin ring only; own links stop at the rim (see draw) */
   g.imgs .node.hasimg .shape { display:none; }           /* the generic square/dot would show behind a small photo */
   .node .halo { fill:var(--yellow); fill-opacity:0; }
   .node.pinned .halo { fill-opacity:0.22; }
@@ -223,7 +224,7 @@ const BAR = `
     <h4>Mouse</h4>
     <dl>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
-      <dt><kbd>Ctrl</kbd>-drag · middle-drag</dt><dd>rotate the whole map around the centre of the view; positions and pins turn with it</dd>
+      <dt><kbd>Ctrl</kbd>-drag · middle-drag · two-finger twist</dt><dd>rotate the whole map (around the centre of the view, or between the fingers); positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
       <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map (again: none), <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
@@ -378,7 +379,8 @@ class ZigbeeMapPanel extends HTMLElement {
       if (d) for (const o of dds) if (!e.composedPath().includes(o)) o.open = false;
       if (eating || d) { e.stopPropagation(); e.preventDefault(); if (type === 'dblclick' || !d) eating = false; }
     }, true);
-    for (const d of dds) d.addEventListener('toggle', () => { if (d.open) for (const o of dds) if (o !== d) o.open = false; });
+    for (const d of dds) d.addEventListener('toggle', () => { if (d.open) { for (const o of dds) if (o !== d) o.open = false; this.placeMenu(d); } });
+    window.addEventListener('resize', () => { for (const d of dds) if (d.open) this.placeMenu(d); });
     this.$('devs').addEventListener('toggle', () => { if (this.$('devs').open) { this.fillDevices(); this.loadRegistry().then(() => { if (this.$('devs').open) this.fillDevices(); }); } });
     try { await loadD3(); } catch (e) { this.$('status').textContent = e.message; return; }
     this.initGraph();
@@ -525,6 +527,21 @@ class ZigbeeMapPanel extends HTMLElement {
       window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
     });
     svgEl.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
+    // two fingers turn the map as well as pinch it: rotation around the point between the fingers, after a ~8° dead zone so
+    // a plain pinch does not wobble. d3.zoom keeps handling the pinch (scale) and the pan at the same time. Capture phase on
+    // the canvas: d3.zoom stops the touch events on the svg itself
+    const ang = t => Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX);
+    let ta0 = null, tTurned = false;
+    $('canvas').addEventListener('touchstart', e => { if (e.touches.length === 2) { ta0 = ang(e.touches); tTurned = false; } else ta0 = null; }, { passive: true, capture: true });
+    $('canvas').addEventListener('touchmove', e => {
+      if (ta0 == null || e.touches.length !== 2 || !this.data) return;
+      let d = ang(e.touches) - ta0; d = Math.atan2(Math.sin(d), Math.cos(d));
+      if (!tTurned && Math.abs(d) < 0.14) return;
+      const c = $('canvas').getBoundingClientRect(), t = e.touches;
+      const centre = d3.zoomTransform(svgEl).invert([(t[0].clientX + t[1].clientX) / 2 - c.left, (t[0].clientY + t[1].clientY) / 2 - c.top]);
+      this.rotateAll(d, centre); ta0 += d; tTurned = true;
+    }, { passive: true, capture: true });
+    $('canvas').addEventListener('touchend', e => { if (e.touches.length < 2) { if (tTurned) { this._rotated = true; this.savePos(); } ta0 = null; tTurned = false; } }, { passive: true, capture: true });
     const v = lsGet(LS.view, null); if (v && v.k > 0) this.svg.call(this.zoom.transform, d3.zoomIdentity.translate(v.x, v.y).scale(v.k));
     this.svg.on('click', () => { if (this._rotated) { this._rotated = false; return; } if (this.sel.size) { this.selected = null; this._selOnly = true; this.render(); } else this.applySel(); });
     this.spring = Math.min(2, +lsGet(LS.spring, 1) || 1);
@@ -737,6 +754,17 @@ class ZigbeeMapPanel extends HTMLElement {
     this.glq.selectAll('text').classed('dim', l => !linkOn(l));
     if (this.$('devs')?.open) this.fillDevices();
   }
+  // keep a dropdown inside the panel: as wide as it wants up to the panel width (minus a margin), shifted left when it would
+  // stick out on the right. On a phone the panel is narrower than the menu's preferred width, so the menu shrinks and wraps.
+  placeMenu(d) {
+    const m = d?.querySelector('.menu'); if (!m || !d.open) return;
+    const host = this.getBoundingClientRect(), right = Math.min(host.right, document.documentElement.clientWidth), margin = 8;
+    m.style.left = '0px'; m.style.setProperty('--avail', Math.max(160, right - host.left - 2 * margin) + 'px');
+    const r = m.getBoundingClientRect();
+    let shift = Math.max(0, r.right - (right - margin));
+    shift = Math.min(shift, r.left - (host.left + margin));   // never past the panel's left edge
+    m.style.left = -Math.max(0, shift) + 'px';
+  }
   // HA is a single-page app: navigate without a page load; the panel keeps its state through savePos/saveView/selection on disconnect
   navTo(href) { history.pushState(null, '', href); window.dispatchEvent(new CustomEvent('location-changed', { bubbles: true, composed: true })); }
   // Zigbee2MQTT's frontend in a drawer over the map (the map keeps running underneath); Ctrl/middle click still opens a tab
@@ -822,7 +850,7 @@ class ZigbeeMapPanel extends HTMLElement {
       html = `<table><tr class="head">${th(`device (${list.length})`, 'name')}<th>links</th>${th('type', 'type')}${th('last seen', 'seen')}</tr>` + list.map(x => row(x.n)).join('') + '</table>';
     }
     if (!z2m) html += '<div class="muted">Zigbee2MQTT links: enter the frontend URL in the integration\'s options (⚙ top right)</div>';
-    box.innerHTML = html;
+    box.innerHTML = html; this.placeMenu(this.$('devs'));
     for (const h of box.querySelectorAll('th[data-sort]')) h.onclick = e => { e.stopPropagation(); const k = h.dataset.sort; this._devSort = st.key === k ? { key: k, dir: -st.dir } : { key: k, dir: 1 }; lsSet(LS.devSort, this._devSort); this.fillDevices(); };
     for (const td of box.querySelectorAll('td.name')) td.onclick = e => { const n = this.data.byId[td.parentElement.dataset.id]; if (n) this.clickSelect(n, e); };
     for (const a of box.querySelectorAll('a[data-nav]')) a.onclick = e => { e.preventDefault(); this.navTo(a.getAttribute('href')); };
