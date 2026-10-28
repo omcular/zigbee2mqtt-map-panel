@@ -89,7 +89,7 @@ function meshThresholds(nodes, links) {
 }
 
 function mergeMap(map) {
-  const nodes = map.nodes.map(n => ({ id: n.ieeeAddr, name: n.friendlyName || n.ieeeAddr, type: n.type, nwk: n.networkAddress, lastSeen: n.lastSeen ?? null,
+  const nodes = map.nodes.map(n => ({ id: n.ieeeAddr, name: n.friendlyName || n.ieeeAddr, type: n.type, nwk: n.networkAddress, lastSeen: n.lastSeen ?? null, failed: n.failed || [],
     model: n.definition?.model ?? '', vendor: n.definition?.vendor ?? '', desc: n.definition?.description ?? '' }));
   const known = new Set(nodes.map(n => n.id));
   for (const l of map.links) for (const a of [l.sourceIeeeAddr, l.targetIeeeAddr]) if (!known.has(a)) { known.add(a); nodes.push({ id: a, name: a + ' (not in device list)', type: 'Unknown', nwk: null, lastSeen: null }); }
@@ -200,9 +200,9 @@ const STYLE = `
   #tip .title { font-size:16px; font-weight:600; line-height:1.2; margin-bottom:2px; }
   #canvas { position:relative; order:2; flex:1 1 auto; min-height:0; }
   .link line.vis { stroke-linecap:round; pointer-events:none; }
-  .link line.glow { stroke:#fff; stroke-opacity:.45; stroke-linecap:round; pointer-events:none; filter:url(#glow); }
+  .link line.glow { stroke:#c4c4c4; stroke-opacity:.5; stroke-linecap:round; pointer-events:none; filter:url(#glow); }
   .link path.arr { fill:#fff; fill-opacity:.9; pointer-events:none; }
-  .link.onpath line.glow { stroke-opacity:.9; }   /* the selected router's path to the coordinator */
+  .link.onpath line.glow { stroke:#e8e8e8; stroke-opacity:.95; }   /* the selected router's path to the coordinator */
   .link line.hit { stroke:transparent; stroke-width:6px; }
   .link.dim, .lql.dim { opacity:0.3; }
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
@@ -579,7 +579,7 @@ class ZigbeeMapPanel extends HTMLElement {
   initGraph() {
     const r = this.shadowRoot, $ = this.$;
     this.svg = d3.select($('canvas').querySelector(':scope > svg')); this.tip = d3.select($('tip'));
-    this.svg.append('defs').html('<filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.2"/></filter>');
+    this.svg.append('defs').html('<filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="0.9"/></filter>');
     this.g = this.svg.append('g'); this.gl = this.g.append('g'); this.glq = this.g.append('g'); this.gn = this.g.append('g');
     // Ctrl is excluded on purpose: Ctrl-wheel stays browser zoom, Ctrl-drag rotates (below); middle button rotates too
     this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { this._zoomT = e.transform; this.g.attr('transform', e.transform); }).on('end', () => this.saveView()).filter(e => (e.type === 'wheel' || !e.target.closest?.('.node')) && !e.button && !e.ctrlKey);   // nodes are for dragging, but the wheel zooms everywhere
@@ -989,7 +989,8 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   pathHomeHtml(d) {
     if (d.type !== 'Router') return '';
-    const p = this.pathHome(d); if (!p) return this._hasRoutes ? '<div class="muted">no active route to the coordinator in its table</div>' : '';
+    const p = this.pathHome(d);
+    if (!p) return !this._hasRoutes ? '' : d.failed?.includes('routingTable') ? '<div class="muted">routing table not available: the device does not answer the request (Tuya modules)</div>' : '<div class="muted">no active route to the coordinator in its table</div>';
     let cur = d; const names = [esc(d.name)]; for (const l of p) { cur = l.s === cur ? l.t : l.s; names.push(esc(cur.name)); }
     return `<div class="path"><span class="muted">path to coordinator</span> ${names.join(' → ')}</div>`;
   }

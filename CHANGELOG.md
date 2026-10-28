@@ -27,6 +27,7 @@ section and uses it as the GitHub release notes.
 - Routes overlay (options › Show): after a scan with "routes on pull", links carrying active routes get a white glow
   underneath, the more routes the wider, with an arrow at the end the traffic flows to; the coloured links stay as they
   are. A selected router's path to the coordinator glows brighter and its card names the hops.
+- Node card: a router whose routing table could not be read says so (Tuya modules do not answer the request).
 - Link tooltip: routes laid out one line per direction, "A → B → destinations", destinations named, status only when
   not active.
 - Node and link tooltips stay inside the map area: flipped to the other side of the pointer near an edge, never cut off
