@@ -24,9 +24,9 @@ section and uses it as the GitHub release notes.
 - Devices list: sortable by name, type, LQI (weaker direction first, then the stronger) and last seen.
 - Help: each entry as a small heading with its explanation indented below (was a two-column table).
 - Dropdowns stay inside the panel: shifted left when they would stick out, narrower and wrapping on a phone.
-- Routes overlay (options › Show): after a scan with "routes on pull", links carrying active routes get a white glow
-  underneath, the more routes the wider, with an arrow at the end the traffic flows to; the coloured links stay as they
-  are. A selected router's path to the coordinator glows brighter and its card names the hops.
+- Routes overlay (options › Show): after a scan with "routes on pull", links carrying active routes are drawn thicker,
+  the more routes the thicker, with an arrow in the link's colour at the end the traffic flows to; other links are
+  unchanged. A selected router's path to the coordinator is drawn extra thick and its card names the hops.
 - Node card: a router whose routing table could not be read says so (Tuya modules do not answer the request).
 - Link tooltip: routes laid out one line per direction, "A → B → destinations", destinations named, status only when
   not active.
