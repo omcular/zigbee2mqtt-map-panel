@@ -182,7 +182,6 @@ const STYLE = `
   #lq span.grad { cursor:pointer; touch-action:none; } #lq span.grad.drag { cursor:ew-resize; }
   #lq span.grad::before { content:''; position:absolute; left:-4px; right:-4px; top:-8px; bottom:-14px; }   /* bigger hit area */
   #lq span.grad b.mk { position:absolute; top:-8px; width:0; height:0; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid var(--primary-text-color,#fff); border-bottom:0; pointer-events:none; }
-  #lq span.grad b.mk.off { display:none; }
   #lq span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
   #tip.touch, #tip.pinned { pointer-events:auto; }
   #tip.pinned { cursor:pointer; border-color:var(--primary-color,#03a9f4); }
@@ -193,9 +192,7 @@ const STYLE = `
   #tip .path { margin-top:4px; white-space:normal; }
   #tip .tiphint { margin-top:4px; font-size:10px; color:var(--muted); } #tip .muted { color:var(--muted); }
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:min(380px, calc(100% - 8px)); box-sizing:border-box; overflow-wrap:anywhere; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
-  #canvas > svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
-  #canvas > svg:active { cursor:grabbing; }
-  #canvas > svg.rotating { cursor:grabbing; }
+  #canvas > svg { position:absolute; inset:0; width:100%; height:100%; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
   #tip .big { font-size:22px; font-weight:600; line-height:1.1; margin-bottom:3px; }
   #tip .title { font-size:16px; font-weight:600; line-height:1.2; margin-bottom:2px; }
   #canvas { position:relative; order:2; flex:1 1 auto; min-height:0; }
@@ -206,10 +203,10 @@ const STYLE = `
   .link.dim, .lql.dim { opacity:0.3; }
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
   .lql { font-size:9px; fill:var(--primary-text-color,#c7cdd8); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
+  .lql { dominant-baseline:auto; transform-box:fill-box; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node.end text { font-size:9.5px; fill:var(--muted); }
   .node, .node * { cursor:pointer; }   /* a node is clicked (select) far more often than dragged */
-  svg:active .node, svg:active .node * { cursor:grabbing; }
   .node circle.imgbg { fill:transparent; }   /* hit area + selection/pin ring only; own links stop at the rim (see draw) */
   g.imgs .node.hasimg .shape { display:none; }           /* the generic square/dot would show behind a small photo */
   .node .halo { fill:var(--yellow); fill-opacity:0; }
@@ -234,24 +231,25 @@ const BAR = `
     <label><input type="checkbox" id="showOne"> one-sided / stale links</label>
     <label title="when a node is selected, also reveal its one-sided (dashed) links; links hidden by the hide slider are always revealed"><input type="checkbox" id="selOne"> one-sided / stale on selected node</label>
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
-    <label>show names for <select id="names"><option value="none">none</option><option value="routers">routers only</option><option value="all" selected>all devices</option></select></label>
+    <label>show names for <select id="names"><option value="none">none</option><option value="routers" selected>routers only</option><option value="all">all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
+    <label title="the info box that appears while the mouse rests on a node or a link; off: only the card a click opens"><input type="checkbox" id="hoverTips" checked> hover popups</label>
     <label title="draw what the routing tables say: links that carry active routes thicker (the more routes, the thicker) with an arrow at the end the traffic goes to; a selected router shows its path to the coordinator extra thick. 0: off · higher: thickness grows faster with the number of routes. Needs a scan with &quot;routes on pull&quot;">routes <input type="range" id="showRoutes" min="0" max="3" value="0" step="0.1"> <span id="showRoutesV">off</span></label>
     <div id="routesNote" class="note"></div>
-    <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg"> show device images</label>
-    <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
+    <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg" checked> show device images</label>
+    <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds)">node size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
     </div>
     <h4>Layout</h4>
     <div class="grp">
-    <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="1" step="0.05"> <span id="springV">1.0</span></label>
+    <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="0.5" step="0.05"> <span id="springV">0.5</span></label>
     <label title="push nodes off links they are not part of (and bend those links away) · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
-    <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> drag pins nodes</label>
+    <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> dragging pins nodes</label>
     <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview">reset view</button></div>
     </div>
     <h4>Scans</h4>
     <div class="grp">
-    <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> routes on pull</label>
+    <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> pull routes (may take very long)</label>
     <label title="the integration scans on its own at this interval, whether anyone is looking or not (number entity &quot;Background scan interval&quot;). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
     <label title="while this panel is open and visible it requests a scan at this interval (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
     <div id="schedNote" class="note"></div>
@@ -282,7 +280,7 @@ const BAR = `
       <dt>dashed grey</dt><dd>only one side reported the link, or reported 0: usually a stale neighbour-table entry (hidden unless "one-sided / stale links" is on)</dd>
       <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI contrast" in options sets how much; "spacing" scales all distances)</dd>
-      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "show device images" in options puts the zigbee2mqtt.io photo on each node, "image size" scales them (needs internet; the PNG export leaves them out)</dd>
+      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "show device images" in options puts the zigbee2mqtt.io photo on each node, "node size" scales them, pictures or not (needs internet; the PNG export leaves them out)</dd>
       <dt>what a link is</dt><dd>an entry in a router's neighbour table, not a live route. These tables hold ~16 entries and age in and out, so links come and go between scans; judge a path over several scans</dd>
     </dl>
     <h4>Data</h4>
@@ -290,7 +288,7 @@ const BAR = `
       <dt>background scan</dt><dd>the integration asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes. The same three settings exist as entities of the "Zigbee2MQTT map" device, usable in automations</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule: the integration runs one scan at a time and remembers the last request</dd>
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
-      <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
+      <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "pull routes" also reads routing tables (slower, much slower on the first pull). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only links whose weaker direction is above the chosen LQI (the white marker); far left shows all. Until you move it, it follows the "redundant" threshold ("auto"): the mesh first, marginal links on demand. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
@@ -612,7 +610,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('canvas').addEventListener('touchend', e => { if (e.touches.length < 2) { if (tTurned) { this._rotated = true; this.savePos(); } ta0 = null; tTurned = false; } }, { passive: true, capture: true });
     const v = lsGet(LS.view, null); if (v && v.k > 0) this.svg.call(this.zoom.transform, d3.zoomIdentity.translate(v.x, v.y).scale(v.k));
     this.svg.on('click', () => { if (this._rotated) { this._rotated = false; return; } this.hideTip(); if (this.sel.size) { this.selected = null; this._selOnly = true; this.render(); } else this.applySel(); });
-    this.spring = Math.min(2, +lsGet(LS.spring, 1) || 1);
+    this.spring = Math.min(2, +lsGet(LS.spring, 0.5) || 0.5);
     // rest length follows link quality (weaker direction): LQI 255 -> short, LQI 0 / one-sided -> long
     const q = l => (l.oneSided || !(l.min >= 0) || l.min > 255) ? 0 : l.min / 255;
     this.lqilen = Math.min(3, +lsGet(LS.lqilen, 1)); if (!(this.lqilen >= 0)) this.lqilen = 1;
@@ -625,7 +623,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
       .on('tick', () => { this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
-    const PREFS = ['swapBars', 'showRoutes', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['swapBars', 'showRoutes', 'hoverTips', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
@@ -643,7 +641,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
     // Min LQI: the LQI colour bar is the slider, a marker shows the setting, press or drag on the bar sets it
-    this.updLegendMk = () => { const mk = $('lq').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.classList.toggle('off', !(v > 0)); mk.style.left = (v / 2.55) + '%';
+    this.updLegendMk = () => { const mk = $('lq').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.style.left = (v / 2.55) + '%';
       $('lq').title = `Min LQI: ${$('hideV').textContent} · shows only links whose weaker direction is above it · press or drag on the bar · far left: show all`; };
     const setFromBar = (g, x) => { const r = g.getBoundingClientRect(), v = Math.max(0, Math.min(255, Math.round(((x - r.left) / r.width) * 255 / 5) * 5)), h = $('hide');
       if (+h.value === v && lsGet(LS.hideSet, false)) return; h.value = v; lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); };
@@ -748,15 +746,15 @@ class ZigbeeMapPanel extends HTMLElement {
     lm.select('path.arrT').attr('fill', color).style('display', l => ro && l.rVia?.has(l.t.id) ? null : 'none');
     $('routesNote').textContent = ro && !this._hasRoutes ? 'this map has no routes: scan with "routes on pull"' : '';
     lm.select('line.hit')
-      .on('mouseenter', (e, l) => this._pinned || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
+      .on('mouseenter', (e, l) => this._pinned || !$('hoverTips').checked || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
         esc(`${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})`) + (l.routes.length ? routesHtml(l) : ''), true))
       .on('mousemove', e => { if (!this._pinned) this.moveTip(e); }).on('mouseleave', () => { if (!this._pinned) this.hideTip(); });
     const lql = this.glq.selectAll('text').data(links, key); lql.exit().remove();
-    lql.enter().append('text').attr('class', 'lql').attr('text-anchor', 'middle').merge(lql).text(l => `${fmt(l.lqS)} / ${fmt(l.lqT)}`).style('display', $('showLql').checked ? null : 'none');
+    lql.enter().append('text').attr('class', 'lql').attr('text-anchor', 'middle').attr('dy', -4).merge(lql).text(l => `${fmt(l.lqS)} / ${fmt(l.lqT)}`).style('display', $('showLql').checked ? null : 'none');
     const node = this.gn.selectAll('g.node').data(nodes, n => n.id); node.exit().remove();
     const ne = node.enter().append('g').attr('class', 'node').call(d3.drag()
       .on('start', (e, d) => { d._moved = false; d._wasPinned = d.fx != null; d._x0 = e.x; d._y0 = e.y; d.fx = d.x; d.fy = d.y; })
-      .on('drag', (e, d) => { if (!d._moved) { if (Math.hypot(e.x - d._x0, e.y - d._y0) < 4) return; d._moved = true; self.sim.alphaTarget(0.25).restart(); } d.fx = e.x; d.fy = e.y; })
+      .on('drag', (e, d) => { if (!d._moved) { if (Math.hypot(e.x - d._x0, e.y - d._y0) < 4) return; d._moved = true; self.hideTip(); self.sim.alphaTarget(0.25).restart(); } d.fx = e.x; d.fy = e.y; })
       .on('end', (e, d) => {
         if (!d._moved) { if (!d._wasPinned) { d.fx = d.fy = null; } return; }   // plain click: nothing moved, nothing heats
         if (!e.active) self.sim.alphaTarget(0);
@@ -772,7 +770,7 @@ class ZigbeeMapPanel extends HTMLElement {
           if (self.sel.has(d)) self.pinTip(d, pos); else self.hideTip();   // also drops a hover preview a phone tap left behind
         }, 260); })
       .on('dblclick', (e, d) => { e.stopPropagation(); clearTimeout(self._clickT); if (d.fx != null) { d.fx = d.fy = null; self.sim.alpha(0.3).restart(); } else { d.fx = d.x; d.fy = d.y; } self.savePos(); self.draw(); })
-      .on('mouseenter', (e, d) => { if (!this._pinned) this.showTip(e, this.nodeTipHtml(d), true); })
+      .on('mouseenter', (e, d) => { if (!this._pinned && $('hoverTips').checked) this.showTip(e, this.nodeTipHtml(d), true); })
       .on('mousemove', e => { if (!this._pinned) this.moveTip(e); }).on('mouseleave', () => { if (!this._pinned) this.hideTip(); });
     ne.append('circle').attr('class', 'halo').attr('r', d => d.type === 'Coordinator' ? 22 : d.isEnd ? 11 : 19);
     ne.append('circle').attr('class', 'ring').attr('r', d => d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12).attr('fill', 'none').attr('stroke', 'none').attr('stroke-width', 2);
@@ -812,13 +810,17 @@ class ZigbeeMapPanel extends HTMLElement {
       const S = d.isEnd ? Math.round(S0 * 0.67) : S0, r = S / 2 + 6, g = d3.select(this), has = !!this.querySelector('image.img');
       g.select('image.img').attr('width', S).attr('height', S).attr('x', -S / 2).attr('y', -S / 2);
       g.select('circle.imgbg').attr('r', r);
-      g.select('text').attr('dy', has && on ? r + 11 : d.isEnd ? 14 : 22);
-      d._r = has && on ? r + 1 : d.type === 'Coordinator' ? 14 : d.isEnd ? 7 : 12;   // where this node's own links end
+      // without a picture the generic shape scales with the same slider (30 = the original size)
+      const f = S0 / 30, shape = g.select('.shape');
+      if (d.type === 'Coordinator') shape.attr('r', 11 * f); else if (d.isEnd) shape.attr('r', 4 * f); else shape.attr('x', -8 * f).attr('y', -8 * f).attr('width', 16 * f).attr('height', 16 * f).attr('rx', 3 * f);
+      g.select('text').attr('dy', has && on ? r + 11 : (d.isEnd ? 7 : 11) * f + 10);
+      d._r = has && on ? r + 1 : (d.type === 'Coordinator' ? 14 : d.isEnd ? 7 : 12) * f;   // where this node's own links end
       // the stale ring and the pin halo follow the image size, otherwise they sit inside a large picture
-      const ringR = has && on ? r : d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12;
+      const ringR = has && on ? r : (d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12) * f;
       g.select('circle.ring').attr('r', ringR); g.select('circle.halo').attr('r', ringR + 7);
     });
-    this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18, on ? S0 * 0.33 + 10 : 0) : Math.max(42, on ? S0 / 2 + 14 : 0));
+    const f = S0 / 30;
+    this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18 * f, on ? S0 * 0.33 + 10 : 0) : Math.max(42 * f, on ? S0 / 2 + 14 : 0));
   }
   // weak gravity toward the canvas centre so nodes that lose all visible links do not fly off. Nodes WITHOUT any visible
   // link are parked in a strip near the bottom instead: at the centre they sit on top of other nodes' links and look connected
@@ -871,7 +873,10 @@ class ZigbeeMapPanel extends HTMLElement {
         else if (ln.classList.contains('arrT')) ln.setAttribute('transform', `translate(${tipT[0]},${tipT[1]}) rotate(${deg + 180}) scale(${k})`);   // t -> s: tip at s's rim
       }
     });
-    this.glq.selectAll('text').attr('x', l => (l.source.x + l.target.x) / 2).attr('y', l => (l.source.y + l.target.y) / 2 - 3);
+    // label text: what the left-hand node hears / what the right-hand node hears, whichever end that is on screen
+    const fmt = v => v == null ? '–' : v;
+    this.glq.selectAll('text').text(l => l.source.x <= l.target.x ? `${fmt(l.lqS)} / ${fmt(l.lqT)}` : `${fmt(l.lqT)} / ${fmt(l.lqS)}`).attr('transform', l => { const dx = l.target.x - l.source.x, dy = l.target.y - l.source.y; let a = Math.atan2(dy, dx) * 180 / Math.PI; if (a > 90 || a < -90) a += 180;   // never upside down
+      return `translate(${(l.source.x + l.target.x) / 2},${(l.source.y + l.target.y) / 2}) rotate(${a})`; });
     this.gn.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`).classed('pinned', d => d.fx != null);
   }
   applySel() {
@@ -1035,7 +1040,8 @@ class ZigbeeMapPanel extends HTMLElement {
     const vars = ['--red', '--orange', '--green', '--blue', '--yellow', '--bgc', '--muted', '--primary-text-color'].map(v => `${v}:${cs.getPropertyValue(v).trim()}`).join(';');
     let xml = new XMLSerializer().serializeToString(svgEl).replace(/<image\b[^>]*\/>|<image\b[^>]*>.*?<\/image>/gs, '');   // remote images would taint the canvas
     const css = STYLE.replace(/:host\s*{[^}]*}/, '').replace(/#\w+\s*{[^}]*}/g, '');
-    xml = xml.replace('<svg', `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" style="${vars};background:${bg};font:13px system-ui,sans-serif"`).replace('>', `><style>${css}</style>`);
+    // the serializer adds xmlns itself in current browsers; a second one makes the XML invalid and the image never loads
+    xml = xml.replace('<svg', `<svg${/<svg[^>]*\sxmlns=/.test(xml) ? '' : ' xmlns="http://www.w3.org/2000/svg"'} width="${w}" height="${h}" style="${vars};background:${bg};font:13px system-ui,sans-serif"`).replace('>', `><style>${css}</style>`);
     const img = new Image(), cv = document.createElement('canvas'); cv.width = w * 2; cv.height = h * 2;
     img.onload = () => { const ctx = cv.getContext('2d'); ctx.fillStyle = bg; ctx.fillRect(0, 0, cv.width, cv.height); ctx.scale(2, 2); ctx.drawImage(img, 0, 0); const a = document.createElement('a'); a.download = `zigbee_map_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.png`; a.href = cv.toDataURL('image/png'); a.click(); };
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);

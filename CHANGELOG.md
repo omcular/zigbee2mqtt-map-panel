@@ -5,6 +5,13 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- New defaults: device images on, spacing 0.5, names for routers only.
+- LQI labels run along their link, just above it; the left value is what the left-hand node hears.
+- "save PNG" works again (the exported SVG carried the xmlns attribute twice and never loaded).
+- "node size" (was "image size") also scales the squares and dots when images are off.
+- Option "hover popups": off leaves only the cards a click opens. A drag hides an open popup.
+- Min LQI marker stays visible at "off". Cursor is the normal arrow, a hand on nodes only.
+- Renamed: "dragging pins nodes", "pull routes (may take very long)".
 - Map: clicking or tapping a node also opens its card, which stays until clicked (or Esc, background, another node)
   and carries the device's "Z2M" and "HA" links; it stays while the Z2M drawer is open. Clicking the selected node
   again brings a closed card back.
