@@ -5,7 +5,7 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
-- Status line: the map's age ("33m ago", "2d ago") instead of the date and time; the exact time on hover.
+- Status line: "scanned 33m ago" / "scanned 2d ago" instead of the date and time; the exact time on hover.
 - Min LQI starts at the mesh's "redundant" threshold (shown as *auto*) until you move the slider, so a first look
   shows the mesh instead of every marginal link. "reset to defaults" brings the automatic value back.
 - Devices list: sortable by name, type, LQI (weaker direction first, then the stronger) and last seen.

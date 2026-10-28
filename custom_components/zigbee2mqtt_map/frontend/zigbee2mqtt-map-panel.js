@@ -492,7 +492,7 @@ class ZigbeeMapPanel extends HTMLElement {
     if (firstMap && this.sel.size) this._selOnly = true;
     const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator').length, ends = nodes.filter(n => n.isEnd).length;
     const mesh = meshThresholds(nodes, links); this.mesh = mesh;
-    const st = this.$('status'); st.textContent = 'map ';
+    const st = this.$('status'); st.textContent = 'scanned ';
     const age = document.createElement('span'); age.id = 'mapAge'; age.dataset.t = new Date(fetchedAt).getTime(); age.title = new Date(fetchedAt).toLocaleString();
     st.append(age, ` · ${routers} routers, ${ends} end devices, ${links.length} links`); this.tickAge();
     if (mesh) {
