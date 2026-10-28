@@ -877,7 +877,14 @@ class ZigbeeMapPanel extends HTMLElement {
     if (!this.$('showLql').checked || !this.data) return;
     const ls = this.data.links.filter(l => l._lw && l.source.x != null), P = [];
     // a pill grows with its link's width (routes overlay), half as fast as the line, like the arrows
-    for (const l of ls) { const t = l._lt ?? 0.5; l._lhit = false; l._lf = Math.min(1.8, 1 + Math.max(0, this.linkWidth(l) / 3 - 1) / 3); P.push({ l, x: l.source.x + (l.target.x - l.source.x) * t, y: l.source.y + (l.target.y - l.source.y) * t, r: l._lw * 0.5 * l._lf }); }
+    for (const l of ls) {
+      const t = l._lt ?? 0.5; l._lhit = false; l._lf = Math.min(1.8, 1 + Math.max(0, this.linkWidth(l) / 3 - 1) / 3);
+      // the stretch a pill may use: clear of both nodes by a margin; too short for the pill at all -> hidden (l._lroom = false)
+      const len = Math.hypot(l.target.x - l.source.x, l.target.y - l.source.y) || 1, half = l._lw * 0.5 * l._lf + 5;
+      l._lmin = ((l.source._r ?? 10) + half) / len; l._lmax = 1 - ((l.target._r ?? 10) + half) / len; l._lroom = l._lmin <= l._lmax;
+      if (!l._lroom) continue;
+      if (l._lt != null) l._lt = Math.max(l._lmin, Math.min(l._lmax, l._lt));
+      P.push({ l, x: l.source.x + (l.target.x - l.source.x) * t, y: l.source.y + (l.target.y - l.source.y) * t, r: l._lw * 0.5 * l._lf }); }
     for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
       const a = P[i], b = P[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), min = (a.r + b.r) * 0.85;
       if (d >= min || d === 0) continue;
@@ -887,15 +894,15 @@ class ZigbeeMapPanel extends HTMLElement {
         const l = p.l, ux = l.target.x - l.source.x, uy = l.target.y - l.source.y, len = Math.hypot(ux, uy) || 1;
         if (!l._ldir) l._ldir = Math.sign(sx * ux + sy * uy) || 1;
         const t = (l._lt ?? 0.5) + l._ldir * Math.min(0.02, 0.4 * (min - d) / len);
-        l._lt = Math.max(0.2, Math.min(0.8, t)); l._lhit = true;   // at the end of the allowed stretch it simply stays (no flipping back and forth)
+        l._lt = Math.max(l._lmin, Math.min(l._lmax, t)); l._lhit = true;   // at the end of the allowed stretch it simply stays (no flipping back and forth)
       }
     }
     // free pills drift back toward the middle, but only into space that is free (with a margin), so a pill never moves
     // back into the collision that pushed it out: the arrangement settles instead of cycling
     const clear = (l, t) => { const x = l.source.x + (l.target.x - l.source.x) * t, y = l.source.y + (l.target.y - l.source.y) * t, r = l._lw * 0.5 * (l._lf || 1);
       for (const q of P) if (q.l !== l && Math.hypot(q.x - x, q.y - y) < (r + q.r) * 0.95) return false; return true; };
-    for (const l of ls) if (!l._lhit) { l._lfree = (l._lfree || 0) + 1; if (l._lfree > 30) l._ldir = 0;
-      if (l._lt != null && l._lfree > 10 && Math.abs(l._lt - 0.5) > 0.002) { const t = l._lt + (0.5 - l._lt) * 0.03; if (clear(l, t)) l._lt = t; } } else l._lfree = 0;
+    for (const l of ls) if (l._lroom && !l._lhit) { l._lfree = (l._lfree || 0) + 1; if (l._lfree > 30) l._ldir = 0;
+      if (l._lt != null && l._lfree > 10 && Math.abs(l._lt - 0.5) > 0.002) { const t = Math.max(l._lmin, Math.min(l._lmax, l._lt + (0.5 - l._lt) * 0.03)); if (clear(l, t)) l._lt = t; } } else l._lfree = 0;
   }
   draw() {
     // each link runs from rim to rim of its own two nodes (gap = node radius), so a link passing under a third node is not cut
@@ -919,7 +926,7 @@ class ZigbeeMapPanel extends HTMLElement {
     // label text: what the left-hand node hears / what the right-hand node hears, whichever end that is on screen
     const fmt = v => v == null ? '–' : v;
     this.spaceLabels();
-    this.glq.selectAll('g.lql').attr('transform', l => { const dx = l.target.x - l.source.x, dy = l.target.y - l.source.y; let a = Math.atan2(dy, dx) * 180 / Math.PI; if (a > 90 || a < -90) a += 180;   // never upside down
+    this.glq.selectAll('g.lql').style('visibility', l => l._lroom === false ? 'hidden' : null).attr('transform', l => { const dx = l.target.x - l.source.x, dy = l.target.y - l.source.y; let a = Math.atan2(dy, dx) * 180 / Math.PI; if (a > 90 || a < -90) a += 180;   // never upside down
       const t = l._lt ?? 0.5; return `translate(${l.source.x + dx * t},${l.source.y + dy * t}) rotate(${a}) scale(${l._lf || 1})`; })
       .select('text').text(l => l.source.x <= l.target.x ? `${fmt(l.lqS)} / ${fmt(l.lqT)}` : `${fmt(l.lqT)} / ${fmt(l.lqS)}`);
     this.gn.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`).classed('pinned', d => d.fx != null);
