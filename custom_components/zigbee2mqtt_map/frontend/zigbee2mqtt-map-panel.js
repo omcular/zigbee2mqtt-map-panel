@@ -23,6 +23,7 @@ const hideOk = (lq, v) => v > 0 ? lq > v : true;
 const hideLabel = v => v > 0 ? `> ${v}` : 'off';
 const imgUrl = m => m ? `https://www.zigbee2mqtt.io/images/devices/${String(m).replace(/[/:\s]/g, '-')}.png` : null;
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ago = ms => ms < 60e3 ? 'just now' : ms < 3600e3 ? `${Math.round(ms / 60e3)} min ago` : ms < 86400e3 ? `${(ms / 3600e3).toFixed(1)} h ago` : `${(ms / 86400e3).toFixed(1)} d ago`;
 const LQ = { red: '#e5484d', orange: '#f5a623', green: '#46c36a', green2: '#22d66f', grey: '#8a8f99' };
 let lqScale = null;   // built once d3 is loaded
 const lqSmooth = v => (lqScale ??= d3.scaleLinear().domain([0, 50, 80, 255]).range([LQ.red, LQ.orange, LQ.green, LQ.green2]).interpolate(d3.interpolateHcl).clamp(true))(v);
@@ -133,6 +134,16 @@ const STYLE = `
   details#help dd { margin:0; color:var(--muted); }
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
+  details#devs .menu { min-width:min(640px, calc(100vw - 40px)); max-height:min(70vh, 640px); overflow:auto; gap:4px; }
+  details#devs table { border-collapse:collapse; font-size:12px; }
+  details#devs th { text-align:left; color:var(--muted); font-weight:normal; padding:2px 10px 4px 0; white-space:nowrap; }
+  details#devs td { padding:2px 10px 2px 0; white-space:nowrap; }
+  details#devs td.name { cursor:pointer; max-width:260px; overflow:hidden; text-overflow:ellipsis; } details#devs td.name:hover { text-decoration:underline; }
+  details#devs tr.sel td { color:var(--primary-color,#03a9f4); }
+  details#devs td.lq { font-variant-numeric:tabular-nums; }
+  details#devs a { color:var(--primary-color,#03a9f4); text-decoration:none; margin-right:8px; }
+  details#devs a:hover { text-decoration:underline; }
+  details#devs .muted { color:var(--muted); }
   details#help code { font-size:11px; }
   details#help a { color:var(--primary-color,#03a9f4); }
   details.dd .menu input[type=range] { width:120px; }
@@ -173,6 +184,7 @@ const BAR = `
   <button id="pull" class="primary">pull fresh map</button>
   <label title="show only links whose weaker direction is above this LQI · far left: show all">Min LQI <input type="range" id="hide" min="0" max="255" value="0" step="5"> <span id="hideV">off</span></label>
   <label>find <input type="text" id="find" placeholder="node name…"></label>
+  <details id="devs" class="dd"><summary>devices ▾</summary><div class="menu" id="devMenu"></div></details>
   <details id="opts" class="dd"><summary>options ▾</summary><div class="menu">
     <label><input type="checkbox" id="showEnd"> end devices</label>
     <label><input type="checkbox" id="showOne"> one-sided / stale links</label>
@@ -203,6 +215,7 @@ const BAR = `
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
       <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
+      <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map. "Z2M" opens the device in the Zigbee2MQTT frontend (set its URL in the integration's options), "HA" opens its device page in Home Assistant</dd>
     </dl>
     <h4>Reading the map</h4>
     <dl>
@@ -272,9 +285,10 @@ class ZigbeeMapPanel extends HTMLElement {
     this.$ = id => r.getElementById(id);
     this.$('pull').onclick = () => this.pull();
     this.$('reload').onclick = () => location.reload();
-    const dds = [this.$('opts'), this.$('help')];
+    const dds = [this.$('devs'), this.$('opts'), this.$('help')];
     r.addEventListener('click', e => { for (const d of dds) if (d.open && !e.composedPath().includes(d)) d.open = false; });
     for (const d of dds) d.addEventListener('toggle', () => { if (d.open) for (const o of dds) if (o !== d) o.open = false; });
+    this.$('devs').addEventListener('toggle', () => { if (this.$('devs').open) { this.fillDevices(); this.loadRegistry().then(() => { if (this.$('devs').open) this.fillDevices(); }); } });
     try { await loadD3(); } catch (e) { this.$('status').textContent = e.message; return; }
     this.initGraph();
     const cached = lsGet(LS.map, null);
@@ -450,7 +464,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('lqilen').oninput = () => { this.lqilen = +$('lqilen').value; $('lqilenV').textContent = this.lqilen.toFixed(2).replace(/0$/, ''); lsSet(LS.lqilen, this.lqilen); this.sim.force('link').distance(dist); this.sim.alpha(0.5).restart(); };
     this.pinMode = !!lsGet(LS.pin, false); $('pinmode').checked = this.pinMode;
     $('pinmode').onchange = () => { this.pinMode = $('pinmode').checked; lsSet(LS.pin, this.pinMode); };
-    $('find').oninput = () => this.applySel();
+    $('find').oninput = () => { this.applySel(); if ($('devs').open) this.fillDevices(); };
     $('unpin').onclick = () => { if (!this.data) return; for (const n of this.data.nodes) n.fx = n.fy = null; this.savePos(); this.sim.alpha(0.6).restart(); this.draw(); };
     $('relayout').onclick = () => this.sim.alpha(0.8).restart();
     $('resetview').onclick = () => { this.svg.transition().duration(300).call(this.zoom.transform, d3.zoomIdentity); };
@@ -615,6 +629,46 @@ class ZigbeeMapPanel extends HTMLElement {
     this.gn.selectAll('g.node').classed('dim', d => active && !active.has(d.id)).classed('sel', d => d === sel || (matches && matches.has(d.id) && !sel));
     this.gl.selectAll('g.link').classed('dim', l => !linkOn(l));
     this.glq.selectAll('text').classed('dim', l => !linkOn(l));
+    if (this.$('devs')?.open) this.fillDevices();
+  }
+  // ---- devices list: the selected node and its neighbours, or everything ----
+  get z2mUrl() { return String(this._panel?.config?.z2m_url || '').trim().replace(/\/+$/, ''); }
+  // HA device ids of the Zigbee2MQTT devices: Z2M's discovery identifiers are "zigbee2mqtt_<ieee>" (the bridge: "zigbee2mqtt_bridge_<ieee>")
+  async loadRegistry() {
+    if (!this._hass?.callWS) return;
+    try {
+      const list = await this._hass.callWS({ type: 'config/device_registry/list' }), m = {};
+      for (const d of list) for (const ident of d.identifiers || []) { const id = ident?.[1]; if (ident?.[0] === 'mqtt' && typeof id === 'string' && id.startsWith('zigbee2mqtt_')) m[id.replace(/^zigbee2mqtt_(bridge_)?/, '')] = d.id; }
+      this._reg = m;
+    } catch (e) { this._reg ??= {}; }
+  }
+  fillDevices() {
+    const box = this.$('devMenu'); if (!box) return;
+    if (!this.data) { box.innerHTML = '<div class="muted">no map yet</div>'; return; }
+    const sel = this.selected, reg = this._reg || {}, z2m = this.z2mUrl, q = this.$('find').value.trim().toLowerCase();
+    const seen = n => n.lastSeen ? ago(Date.now() - n.lastSeen) : (n.type === 'Coordinator' ? '' : '?');
+    const linksFor = n => (z2m ? `<a href="${z2m}/#/device/${encodeURIComponent(n.id)}/info" target="_blank" rel="noopener" title="open in the Zigbee2MQTT frontend">Z2M</a>` : '') +
+      (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
+    const row = (n, extra = '') => `<tr data-id="${esc(n.id)}" class="${n === sel ? 'sel' : ''}"><td class="name" title="${esc(n.id)}">${esc(n.name)}</td><td class="muted">${esc(n.type === 'EndDevice' ? 'end device' : n.type.toLowerCase())}</td>${extra}<td class="muted">${esc(seen(n))}</td><td>${linksFor(n)}</td></tr>`;
+    let html;
+    if (sel) {
+      const nb = [];
+      for (const l of this.data.links) { if (l.s === sel) nb.push({ n: l.t, hear: l.lqS, heard: l.lqT, min: l.min }); else if (l.t === sel) nb.push({ n: l.s, hear: l.lqT, heard: l.lqS, min: l.min }); }
+      nb.sort((a, b) => (b.min || 0) - (a.min || 0) || a.n.name.localeCompare(b.n.name));
+      const lq = v => v == null ? '–' : v;
+      html = `<table><tr><th>selected</th><th></th><th>hears / is heard</th><th>last seen</th><th></th></tr>${row(sel, '<td></td>')}` +
+        `<tr><th>neighbours (${nb.length})</th><th></th><th>LQI</th><th></th><th></th></tr>` +
+        nb.map(x => row(x.n, `<td class="lq">${lq(x.hear)} / ${lq(x.heard)}</td>`)).join('') + '</table>';
+    } else {
+      const order = n => n.type === 'Coordinator' ? 0 : n.isEnd ? 2 : 1;
+      const list = this.data.nodes.filter(n => !q || n.name.toLowerCase().includes(q)).sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
+      html = `<table><tr><th>device (${list.length})</th><th></th><th>last seen</th><th></th></tr>` + list.map(n => row(n)).join('') + '</table>';
+    }
+    if (!z2m) html += '<div class="muted">Zigbee2MQTT links: set the frontend URL in the integration\'s options</div>';
+    box.innerHTML = html;
+    for (const td of box.querySelectorAll('td.name')) td.onclick = () => { const n = this.data.byId[td.parentElement.dataset.id]; if (!n) return; this.selected = this.selected === n ? null : n; this._selOnly = true; this.render(); };
+    // HA is a single-page app: navigate without a page load, the panel state is kept by savePos/saveView on disconnect
+    for (const a of box.querySelectorAll('a[data-nav]')) a.onclick = e => { e.preventDefault(); history.pushState(null, '', a.getAttribute('href')); window.dispatchEvent(new CustomEvent('location-changed', { bubbles: true, composed: true })); };
   }
   showTip(e, text, html = false) { const t = this.tip.style('display', 'block'); if (html) t.html(text); else t.text(text); this.moveTip(e); }
   moveTip(e) { const c = this.$('canvas').getBoundingClientRect(); this.tip.style('left', Math.min(e.clientX - c.left + 14, c.width - 400) + 'px').style('top', (e.clientY - c.top + 14) + 'px'); }

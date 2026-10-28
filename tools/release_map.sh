@@ -31,6 +31,27 @@ confirm "continue with v$v?" || exit 1
 say "version strings"
 if [ $DRY = 1 ]; then echo "  (dry) tools/bump_version.sh $v"; else tools/bump_version.sh "$v" | grep -v '^now:'; fi
 
+# CHANGELOG.md: the "Unreleased" section becomes this version's section and the release notes
+notes=""
+if [ -f CHANGELOG.md ] && grep -q '^## Unreleased' CHANGELOG.md; then
+  notes=$(awk '/^## Unreleased/{f=1; next} /^## /{f=0} f' CHANGELOG.md | sed -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+  if [ -z "$notes" ]; then
+    echo "  CHANGELOG.md has an empty Unreleased section: write the changes there first (or delete the heading to skip)" >&2; exit 1
+  fi
+  echo "  release notes from CHANGELOG.md:"; echo "$notes" | sed 's/^/    /'
+  if [ $DRY = 1 ]; then echo "  (dry) CHANGELOG.md: Unreleased -> $v – $(date +%F)"
+  else
+    python3 - "$v" <<'PY'
+import re, sys, datetime
+v = sys.argv[1]; p = 'CHANGELOG.md'; s = open(p).read()
+s = re.sub(r'^## Unreleased\n', f'## Unreleased\n\n## {v} – {datetime.date.today():%Y-%m-%d}\n', s, count=1, flags=re.M)
+open(p, 'w').write(s)
+PY
+  fi
+else
+  echo "  no Unreleased section in CHANGELOG.md, the release gets GitHub's generated notes only"
+fi
+
 say "tests"
 PY=${PYTEST_PYTHON:-python3}
 if "$PY" -c "import pytest_homeassistant_custom_component" 2>/dev/null; then
@@ -73,7 +94,7 @@ if [ $DRY = 1 ]; then echo "  (dry) would wait for the runs of this commit to fi
 fi
 
 say "release v$v"
-confirm "create the GitHub release v$v (tag + generated notes)?" || exit 1
-run gh release create "v$v" --generate-notes --title "v$v"
+confirm "create the GitHub release v$v (tag + notes)?" || exit 1
+if [ -n "$notes" ]; then run gh release create "v$v" --generate-notes --title "v$v" --notes "$notes"; else run gh release create "v$v" --generate-notes --title "v$v"; fi
 [ $DRY = 1 ] || echo "  https://github.com/$repo/releases/tag/v$v"
 echo "  HACS shows it after its next refresh; 'Update information' on the repository page fetches it now."

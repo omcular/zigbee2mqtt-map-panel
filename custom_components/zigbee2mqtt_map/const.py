@@ -8,6 +8,7 @@ VERSION = "2.0.1"
 CONF_BASE_TOPIC = "base_topic"
 CONF_SIDEBAR_TITLE = "sidebar_title"
 CONF_REQUIRE_ADMIN = "require_admin"
+CONF_Z2M_URL = "z2m_url"  # Zigbee2MQTT frontend, optional: the panel links devices to <url>/#/device/<ieee>/info
 
 DEFAULT_BASE_TOPIC = "zigbee2mqtt"
 DEFAULT_SIDEBAR_TITLE = "Zigbee map"

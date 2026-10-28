@@ -25,7 +25,8 @@
         "data": {
           "base_topic": "Zigbee2MQTT base topic",
           "sidebar_title": "Sidebar title",
-          "require_admin": "Administrators only"
+          "require_admin": "Administrators only",
+          "z2m_url": "Zigbee2MQTT frontend URL (optional, e.g. http://homeassistant:8099; enables the Z2M links in the panel's device list)"
         }
       }
     },
@@ -35,17 +36,27 @@
   },
   "entity": {
     "number": {
-      "background_hours": { "name": "Background scan interval" },
-      "viewing_minutes": { "name": "Scan interval while viewing" }
+      "background_hours": {
+        "name": "Background scan interval"
+      },
+      "viewing_minutes": {
+        "name": "Scan interval while viewing"
+      }
     },
     "switch": {
-      "parallel": { "name": "Use the networkmap_fast topic" }
+      "parallel": {
+        "name": "Use the networkmap_fast topic"
+      }
     },
     "button": {
-      "scan_now": { "name": "Scan now" }
+      "scan_now": {
+        "name": "Scan now"
+      }
     },
     "sensor": {
-      "last_scan": { "name": "Last scan" }
+      "last_scan": {
+        "name": "Last scan"
+      }
     }
   }
 }

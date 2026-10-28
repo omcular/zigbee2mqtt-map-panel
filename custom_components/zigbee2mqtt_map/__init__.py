@@ -18,6 +18,7 @@ from . import websocket
 from .const import (
     CONF_REQUIRE_ADMIN,
     CONF_SIDEBAR_TITLE,
+    CONF_Z2M_URL,
     DEFAULT_REQUIRE_ADMIN,
     DEFAULT_SIDEBAR_TITLE,
     DOMAIN,
@@ -81,7 +82,7 @@ async def _async_register_panel(hass: HomeAssistant, entry: ConfigEntry) -> None
         sidebar_icon=PANEL_ICON,
         module_url=f"{STATIC_URL}/{PANEL_FILE}?v={file_hash}",
         require_admin=entry.options.get(CONF_REQUIRE_ADMIN, DEFAULT_REQUIRE_ADMIN),
-        config={"version": VERSION},
+        config={"version": VERSION, "z2m_url": entry.options.get(CONF_Z2M_URL, "")},
     )
 
 

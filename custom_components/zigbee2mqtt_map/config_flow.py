@@ -17,6 +17,7 @@ from .const import (
     CONF_BASE_TOPIC,
     CONF_REQUIRE_ADMIN,
     CONF_SIDEBAR_TITLE,
+    CONF_Z2M_URL,
     DEFAULT_BASE_TOPIC,
     DEFAULT_REQUIRE_ADMIN,
     DEFAULT_SIDEBAR_TITLE,
@@ -106,6 +107,7 @@ class ZigbeeMapOptionsFlow(OptionsFlow):
             CONF_BASE_TOPIC: entry.options.get(CONF_BASE_TOPIC, entry.data[CONF_BASE_TOPIC]),
             CONF_SIDEBAR_TITLE: entry.options.get(CONF_SIDEBAR_TITLE, DEFAULT_SIDEBAR_TITLE),
             CONF_REQUIRE_ADMIN: entry.options.get(CONF_REQUIRE_ADMIN, DEFAULT_REQUIRE_ADMIN),
+            CONF_Z2M_URL: entry.options.get(CONF_Z2M_URL, ""),
         }
         if user_input:
             current.update(user_input)
@@ -116,6 +118,7 @@ class ZigbeeMapOptionsFlow(OptionsFlow):
                     vol.Required(CONF_BASE_TOPIC, default=current[CONF_BASE_TOPIC]): str,
                     vol.Required(CONF_SIDEBAR_TITLE, default=current[CONF_SIDEBAR_TITLE]): str,
                     vol.Required(CONF_REQUIRE_ADMIN, default=current[CONF_REQUIRE_ADMIN]): selector.BooleanSelector(),
+                    vol.Optional(CONF_Z2M_URL, default=current[CONF_Z2M_URL]): str,
                 }
             ),
             errors=errors,
