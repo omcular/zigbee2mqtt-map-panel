@@ -236,7 +236,7 @@ const BAR = `
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
     <label>show names for <select id="names"><option value="none">none</option><option value="routers">routers only</option><option value="all" selected>all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
-    <label title="draw what the routing tables say: links that carry active routes thicker (the more routes, the thicker) with an arrow at the end the traffic goes to; a selected router shows its path to the coordinator extra thick. Needs a scan with &quot;routes on pull&quot;"><input type="checkbox" id="showRoutes"> routes overlay</label>
+    <label title="draw what the routing tables say: links that carry active routes thicker (the more routes, the thicker) with an arrow at the end the traffic goes to; a selected router shows its path to the coordinator extra thick. 0: off · higher: thickness grows faster with the number of routes. Needs a scan with &quot;routes on pull&quot;">routes <input type="range" id="showRoutes" min="0" max="2" value="0" step="0.1"> <span id="showRoutesV">off</span></label>
     <div id="routesNote" class="note"></div>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg"> show device images</label>
     <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
@@ -272,7 +272,7 @@ const BAR = `
       <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "one-sided / stale on selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map (again: none), <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
       <dt>click / tap node: card</dt><dd>besides selecting the node, its card stays open with "Z2M" and "HA" links (as in the devices list). A click on the card, <kbd>Esc</kbd>, the background or another node closes it; clicking the selected node again brings it back</dd>
-      <dt>routes overlay</dt><dd>(options) what the routing tables say, after a scan with "routes on pull": links carrying active routes are drawn thicker, the more routes the thicker, with an arrow at the end the traffic flows to; links without routes keep their width. Select a router and its path to the coordinator is drawn extra thick; the node card names the hops. The routing tables hold where traffic actually goes, the neighbour tables only who hears whom</dd>
+      <dt>routes</dt><dd>(slider in options) what the routing tables say, after a scan with "routes on pull": links carrying active routes are drawn thicker, the more routes the thicker, with an arrow at the end the traffic flows to; links without routes keep their width. The slider sets how strongly the number of routes shows, far left turns the overlay off. Select a router and its path to the coordinator is drawn extra thick; the node card names the hops. The routing tables hold where traffic actually goes, the neighbour tables only who hears whom</dd>
       <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
       <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
     </dl>
@@ -635,7 +635,9 @@ class ZigbeeMapPanel extends HTMLElement {
     $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); this.draw(); };
     const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
-    $('showEnd').onchange = () => this.render(); $('showRoutes').onchange = () => this.render(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
+    $('showEnd').onchange = () => this.render();
+    const routesLabel = () => { const v = +$('showRoutes').value; $('showRoutesV').textContent = v > 0 ? v.toFixed(1) : 'off'; };
+    $('showRoutes').oninput = () => { routesLabel(); this.render(); }; routesLabel(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => this.glq.selectAll('text').style('display', $('showLql').checked ? null : 'none');
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
@@ -832,8 +834,8 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   // constant width: colour alone carries the LQI; one-sided links are hairlines
   // routes overlay: links carrying active routes get thicker, the more routes the thicker; the rest keep their width
-  linkWidth(l) { if (l.oneSided) return 0.8; const n = this.routesOn() ? (l.rA?.length || 0) : 0; return n ? Math.min(7, 3 + 0.5 * n) : 3; }
-  routesOn() { return !!this.$('showRoutes')?.checked; }
+  linkWidth(l) { if (l.oneSided) return 0.8; const k = this.routesOn(), n = k ? (l.rA?.length || 0) : 0; return n ? Math.min(3 + 4 * k, 3 + 0.5 * k * n) : 3; }
+  routesOn() { const v = +(this.$('showRoutes')?.value || 0); return v > 0 ? v : 0; }   // 0: overlay off · else the thickness factor
   // the chain of next hops from a router to the coordinator, as [links], or null when the map holds no such route
   pathHome(n) {
     const links = [], seen = new Set(); let cur = n;
