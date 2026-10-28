@@ -10,7 +10,7 @@ const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan
 const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
-const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1', avoid: 'z2m_map_avoid' };
+const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1', avoid: 'z2m_map_avoid', devSort: 'z2m_map_devsort_v1' };
 
 let d3Ready;
 function loadD3() {
@@ -145,6 +145,7 @@ const STYLE = `
   details#devs .menu { min-width:min(640px, calc(100vw - 40px)); max-height:min(70vh, 640px); overflow:auto; gap:4px; }
   details#devs table { border-collapse:collapse; font-size:12px; user-select:none; }
   details#devs tr.sub th { border-top:6px solid var(--panel); }
+  details#devs th[data-sort] { cursor:pointer; } details#devs th[data-sort]:hover { color:var(--primary-text-color,#fff); } details#devs th.sorted { color:var(--primary-text-color,#fff); }
   details#devs th { text-align:left; color:var(--muted); font-weight:normal; padding:3px 10px 3px 4px; white-space:nowrap; background:var(--bgc); }
   details#devs th:first-child { border-radius:4px 0 0 4px; } details#devs th:last-child { border-radius:0 4px 4px 0; }
   details#devs tr.head + tr td { padding-top:5px; }
@@ -227,7 +228,7 @@ const BAR = `
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
       <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
-      <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map. "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
+      <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
       <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
     </dl>
     <h4>Reading the map</h4>
@@ -329,7 +330,7 @@ class ZigbeeMapPanel extends HTMLElement {
   setting(k) { const v = parseFloat(this.S.settings?.[k]); return Number.isFinite(v) ? v : null; }
   lastRequestMs() { const t = this.S.last_request ? Date.parse(this.S.last_request) : NaN; return Number.isFinite(t) ? t : 0; }
 
-  connectedCallback() { if (!this._built) { this._built = true; this.build(); } else { this.watchStore(); if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000); } }   // HA may re-attach the same element
+  connectedCallback() { if (!this._built) { this._built = true; this.build(); } else { if (this._onKey) window.addEventListener('keydown', this._onKey); this.watchStore(); if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000); } }   // HA may re-attach the same element
 
   async build() {
     const r = this.shadowRoot;
@@ -340,6 +341,12 @@ class ZigbeeMapPanel extends HTMLElement {
     this.$('reload').onclick = () => location.reload();
     this.$('gear').onclick = e => { e.preventDefault(); this.navTo(this.$('gear').getAttribute('href')); };
     this.$('sideClose').onclick = () => this.closeSide();
+    // Esc closes the Zigbee2MQTT drawer, otherwise an open dropdown. Keys typed inside the drawer stay in its frame (another
+    // origin), so after clicking into it, click the map or the drawer's title bar first
+    this._onKey = e => { if (e.key !== 'Escape' || !this.isConnected) return;
+      if (this.$('side').classList.contains('show')) { this.closeSide(); e.preventDefault(); return; }
+      for (const d of dds) if (d.open) { d.open = false; e.preventDefault(); } };
+    window.addEventListener('keydown', this._onKey);
     const dds = [this.$('devs'), this.$('opts'), this.$('help')];
     r.addEventListener('click', e => { for (const d of dds) if (d.open && !e.composedPath().includes(d)) d.open = false; });
     for (const d of dds) d.addEventListener('toggle', () => { if (d.open) for (const o of dds) if (o !== d) o.open = false; });
@@ -407,7 +414,7 @@ class ZigbeeMapPanel extends HTMLElement {
     scan.tick = setInterval(() => { st.textContent = `scan running (${kind})… ${Math.round((Date.now() - t0) / 1000)} s${scan.progress} (leaving the page is fine, the result is kept by Home Assistant)`; }, 1000);
   }
   endScan() { if (!this._scan) return; clearInterval(this._scan.tick); this._scan = null; this.$('pull').disabled = false; }
-  disconnectedCallback() { clearInterval(this._liveT); this._liveT = null; clearInterval(this._ingressT); this._ingressT = null; this._ingress = null; this.savePos(); this.saveView(); lsSet(LS.sel, [...this.sel].map(n => n.id)); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
+  disconnectedCallback() { window.removeEventListener('keydown', this._onKey); clearInterval(this._liveT); this._liveT = null; clearInterval(this._ingressT); this._ingressT = null; this._ingress = null; this.savePos(); this.saveView(); lsSet(LS.sel, [...this.sel].map(n => n.id)); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
 
   // ask the integration for a scan; the result, progress and errors arrive as events on the subscription
   async pull() {
@@ -533,7 +540,8 @@ class ZigbeeMapPanel extends HTMLElement {
     $('resetview').onclick = () => { this.svg.transition().duration(300).call(this.zoom.transform, d3.zoomIdentity); };
     $('png').onclick = () => this.savePng();
     $('resetall').onclick = () => {
-      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid]) { try { localStorage.removeItem(k); } catch (e) {} }
+      this._devSort = null;
+      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort]) { try { localStorage.removeItem(k); } catch (e) {} }
       const keep = this.data ? { map: lsGet(LS.map, null) } : null;
       this.sim.stop(); clearTimeout(this._posT); this.data = null; this.selected = null; this.warm = false; this._zoomT = null;
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }
@@ -745,6 +753,18 @@ class ZigbeeMapPanel extends HTMLElement {
     const linksFor = n => z2mLink(n) +
       (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
     const row = (n, extra = '') => `<tr data-id="${esc(n.id)}" class="${this.sel.has(n) ? 'sel' : ''}"><td class="name" title="${esc(n.id)}">${esc(n.name)}</td><td>${linksFor(n)}</td><td class="muted">${esc(n.type === 'EndDevice' ? 'end device' : n.type.toLowerCase())}</td>${extra}<td class="muted">${esc(seen(n))}</td></tr>`;
+    // sorting: click a header (name, type, LQI, last seen); again reverses. LQI compares the weaker direction first, then the
+    // stronger one; last seen puts the most recent first. Without a choice: devices by type then name, neighbours by LQI.
+    const st = this._devSort ??= lsGet(LS.devSort, null) || { key: null, dir: 1 };
+    const TYPE = { Coordinator: 0, Router: 1, EndDevice: 2, Unknown: 3 };
+    const age = n => n.type === 'Coordinator' || !n.lastSeen ? Infinity : Date.now() - n.lastSeen;
+    const cmpBy = (key, a, b) => key === 'name' ? a.n.name.localeCompare(b.n.name)
+      : key === 'type' ? (TYPE[a.n.type] ?? 9) - (TYPE[b.n.type] ?? 9)
+      : key === 'seen' ? age(a.n) - age(b.n)
+      : key === 'lqi' ? ((b.lo ?? -2) - (a.lo ?? -2)) || ((b.hi ?? -2) - (a.hi ?? -2)) : 0;
+    const sortRows = (rows, dflt) => { const key = st.key && (st.key !== 'lqi' || rows.some(r => r.lo !== undefined)) ? st.key : dflt, dir = st.key === key ? st.dir : 1;
+      return rows.sort((a, b) => (cmpBy(key, a, b) * dir) || cmpBy('type', a, b) || cmpBy('name', a, b)); };
+    const th = (label, key) => !key ? `<th>${label}</th>` : `<th data-sort="${key}" class="${st.key === key ? 'sorted' : ''}" title="sort by ${key === 'seen' ? 'last seen' : key}; click again to reverse">${label}${st.key === key ? (st.dir > 0 ? ' ▾' : ' ▴') : ''}</th>`;
     let html;
     if (sel) {
       const lq = v => v == null ? '–' : v, multi = this.sel.size > 1, short = n => n.name.length > 18 ? n.name.slice(0, 17) + '…' : n.name;
@@ -754,20 +774,21 @@ class ZigbeeMapPanel extends HTMLElement {
         const other = l.s === s ? l.t : l.t === s ? l.s : null; if (!other || this.sel.has(other)) continue;
         const hear = l.s === s ? l.lqS : l.lqT, heard = l.s === s ? l.lqT : l.lqS, min = l.min || 0;
         const e = nb.get(other);
-        if (!e || min > e.best) nb.set(other, { n: other, best: min, cell: `${lq(hear)} / ${lq(heard)}${multi ? ` <span class="muted">${esc(short(s))}</span>` : ''}` });
+        const v = [hear, heard].map(x => x ?? -1), lo = Math.min(...v), hi = Math.max(...v);
+        if (!e || min > e.best) nb.set(other, { n: other, best: min, lo, hi, cell: `${lq(hear)} / ${lq(heard)}${multi ? ` <span class="muted">${esc(short(s))}</span>` : ''}` });
       }
-      const rows = [...nb.values()].sort((a, b) => b.best - a.best || a.n.name.localeCompare(b.n.name));
-      html = `<table><tr class="head"><th>selected (${this.sel.size})</th><th>links</th><th>type</th><th></th><th>last seen</th></tr>` +
-        [...this.sel].map(s => row(s, '<td></td>')).join('') +
-        `<tr class="head sub"><th>neighbours (${rows.length})</th><th>links</th><th>type</th><th>LQI hears / is heard${multi ? ' · partner' : ''}</th><th>last seen</th></tr>` +
+      const rows = sortRows([...nb.values()], 'lqi'), selRows = sortRows([...this.sel].map(n => ({ n })), 'name');
+      html = `<table><tr class="head">${th(`selected (${this.sel.size})`, 'name')}<th>links</th>${th('type', 'type')}<th></th>${th('last seen', 'seen')}</tr>` +
+        selRows.map(x => row(x.n, '<td></td>')).join('') +
+        `<tr class="head sub">${th(`neighbours (${rows.length})`, 'name')}<th>links</th>${th('type', 'type')}${th(`LQI hears / is heard${multi ? ' · partner' : ''}`, 'lqi')}${th('last seen', 'seen')}</tr>` +
         rows.map(x => row(x.n, `<td class="lq">${x.cell}</td>`)).join('') + '</table>';
     } else {
-      const order = n => n.type === 'Coordinator' ? 0 : n.isEnd ? 2 : 1;
-      const list = this.data.nodes.filter(n => !q || n.name.toLowerCase().includes(q)).sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
-      html = `<table><tr class="head"><th>device (${list.length})</th><th>links</th><th>type</th><th>last seen</th></tr>` + list.map(n => row(n)).join('') + '</table>';
+      const list = sortRows(this.data.nodes.filter(n => !q || n.name.toLowerCase().includes(q)).map(n => ({ n })), 'type');
+      html = `<table><tr class="head">${th(`device (${list.length})`, 'name')}<th>links</th>${th('type', 'type')}${th('last seen', 'seen')}</tr>` + list.map(x => row(x.n)).join('') + '</table>';
     }
     if (!z2m) html += '<div class="muted">Zigbee2MQTT links: enter the frontend URL in the integration\'s options (⚙ top right)</div>';
     box.innerHTML = html;
+    for (const h of box.querySelectorAll('th[data-sort]')) h.onclick = e => { e.stopPropagation(); const k = h.dataset.sort; this._devSort = st.key === k ? { key: k, dir: -st.dir } : { key: k, dir: 1 }; lsSet(LS.devSort, this._devSort); this.fillDevices(); };
     for (const td of box.querySelectorAll('td.name')) td.onclick = e => { const n = this.data.byId[td.parentElement.dataset.id]; if (n) this.clickSelect(n, e); };
     for (const a of box.querySelectorAll('a[data-nav]')) a.onclick = e => { e.preventDefault(); this.navTo(a.getAttribute('href')); };
     for (const a of box.querySelectorAll('a[data-side]')) a.onclick = e => { if (a.target === '_blank' && (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1)) return; e.preventDefault(); this.$('devs').open = false; this.openZ2m(this.data.byId[a.dataset.side], a.getAttribute('href')); };

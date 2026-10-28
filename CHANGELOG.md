@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- Devices list: sortable by name, type, LQI (weaker direction first, then the stronger) and last seen.
+- Esc closes the Zigbee2MQTT drawer, or an open dropdown.
 - Layout: nodes are pushed off links they do not belong to, and those links bend away (options: *keep nodes off
   links*, 0 turns it off).
 - README: `networkmap_fast` is merged into zigbee2mqtt-user-extensions, link to it there.
