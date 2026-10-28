@@ -155,6 +155,7 @@ const STYLE = `
   details#help dd { margin:2px 0 0 14px; color:var(--muted); overflow-wrap:anywhere; }
   details.dd .menu h4 { margin:6px 0 -2px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
   details.dd .menu h4:first-child { margin-top:0; }
+  details.dd .menu .grp { display:flex; flex-direction:column; gap:8px; margin-left:14px; }
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
   details#devs .menu { --mw:640px; max-height:min(var(--availH,70vh), 640px); gap:4px; }
@@ -222,28 +223,36 @@ const BAR = `
   <details id="devs" class="dd"><summary>devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
   <details id="opts" class="dd"><summary>options <i class="arr"></i></summary><div class="menu">
     <h4>Show</h4>
+    <div class="grp">
     <label><input type="checkbox" id="showEnd"> end devices</label>
     <label><input type="checkbox" id="showOne"> one-sided / stale links</label>
-    <label title="when a node is selected, also reveal its one-sided (dashed) links; links hidden by the hide slider are always revealed"><input type="checkbox" id="selOne"> … also on a selected node</label>
+    <label title="when a node is selected, also reveal its one-sided (dashed) links; links hidden by the hide slider are always revealed"><input type="checkbox" id="selOne"> one-sided / stale on selected node</label>
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
     <label>show names for <select id="names"><option value="none">none</option><option value="routers">routers only</option><option value="all" selected>all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg"> show device images</label>
     <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
+    </div>
     <h4>Layout</h4>
+    <div class="grp">
     <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="1" step="0.05"> <span id="springV">1.0</span></label>
     <label title="push nodes off links they are not part of (and bend those links away) · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
     <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> drag pins nodes</label>
     <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview">reset view</button></div>
+    </div>
     <h4>Scans</h4>
+    <div class="grp">
     <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> routes on pull</label>
     <label title="the integration scans on its own at this interval, whether anyone is looking or not (number entity &quot;Background scan interval&quot;). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
     <label title="while this panel is open and visible it requests a scan at this interval (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
     <div id="schedNote" class="note"></div>
+    </div>
     <h4>Panel</h4>
+    <div class="grp">
     <label title="the scan button and status line at the top and these controls at the bottom, within thumb reach on a phone (menus then open upwards)"><input type="checkbox" id="swapBars"> controls at the bottom</label>
     <div class="row"><button id="png">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept; Shift-click forgets it too, like a first visit)">reset to defaults</button></div>
+    </div>
   </div></details>
 <details id="help" class="dd"><summary>help <i class="arr"></i></summary><div class="menu">
     <h4>Mouse</h4>
@@ -252,7 +261,7 @@ const BAR = `
       <dt><kbd>Ctrl</kbd>-drag · middle-drag · two-finger twist</dt><dd>rotate the whole map (around the centre of the view, or between the fingers); positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
-      <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map (again: none), <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
+      <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "one-sided / stale on selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map (again: none), <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
       <dt>click / tap node: card</dt><dd>besides selecting the node, its card stays open with "Z2M" and "HA" links (as in the devices list). A click on the card, <kbd>Esc</kbd>, the background or another node closes it; clicking the selected node again brings it back</dd>
       <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
