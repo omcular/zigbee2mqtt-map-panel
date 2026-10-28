@@ -137,8 +137,10 @@ const STYLE = `
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
   details#devs .menu { min-width:min(640px, calc(100vw - 40px)); max-height:min(70vh, 640px); overflow:auto; gap:4px; }
   details#devs table { border-collapse:collapse; font-size:12px; }
-  details#devs th { text-align:left; color:var(--muted); font-weight:normal; padding:2px 10px 4px 0; white-space:nowrap; }
-  details#devs td { padding:2px 10px 2px 0; white-space:nowrap; }
+  details#devs th { text-align:left; color:var(--muted); font-weight:normal; padding:3px 10px 3px 4px; white-space:nowrap; background:var(--bgc); }
+  details#devs th:first-child { border-radius:4px 0 0 4px; } details#devs th:last-child { border-radius:0 4px 4px 0; }
+  details#devs tr.head + tr td { padding-top:5px; }
+  details#devs td { padding:2px 10px 2px 4px; white-space:nowrap; }
   details#devs td.name { cursor:pointer; max-width:260px; overflow:hidden; text-overflow:ellipsis; } details#devs td.name:hover { text-decoration:underline; }
   details#devs tr.sel td { color:var(--primary-color,#03a9f4); }
   details#devs td.lq { font-variant-numeric:tabular-nums; }
@@ -668,13 +670,13 @@ class ZigbeeMapPanel extends HTMLElement {
       for (const l of this.data.links) { if (l.s === sel) nb.push({ n: l.t, hear: l.lqS, heard: l.lqT, min: l.min }); else if (l.t === sel) nb.push({ n: l.s, hear: l.lqT, heard: l.lqS, min: l.min }); }
       nb.sort((a, b) => (b.min || 0) - (a.min || 0) || a.n.name.localeCompare(b.n.name));
       const lq = v => v == null ? '–' : v;
-      html = `<table><tr><th>selected</th><th></th><th>hears / is heard</th><th>last seen</th><th></th></tr>${row(sel, '<td></td>')}` +
-        `<tr><th>neighbours (${nb.length})</th><th></th><th>LQI</th><th></th><th></th></tr>` +
+      html = `<table><tr class="head"><th>selected</th><th>type</th><th></th><th>last seen</th><th>links</th></tr>${row(sel, '<td></td>')}` +
+        `<tr class="head"><th>neighbours (${nb.length})</th><th>type</th><th>LQI hears / is heard</th><th>last seen</th><th>links</th></tr>` +
         nb.map(x => row(x.n, `<td class="lq">${lq(x.hear)} / ${lq(x.heard)}</td>`)).join('') + '</table>';
     } else {
       const order = n => n.type === 'Coordinator' ? 0 : n.isEnd ? 2 : 1;
       const list = this.data.nodes.filter(n => !q || n.name.toLowerCase().includes(q)).sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
-      html = `<table><tr><th>device (${list.length})</th><th></th><th>last seen</th><th></th></tr>` + list.map(n => row(n)).join('') + '</table>';
+      html = `<table><tr class="head"><th>device (${list.length})</th><th>type</th><th>last seen</th><th>links</th></tr>` + list.map(n => row(n)).join('') + '</table>';
     }
     if (!z2m) html += '<div class="muted">Zigbee2MQTT links: enter the frontend URL in the integration\'s options (⚙ top right)</div>';
     box.innerHTML = html;
