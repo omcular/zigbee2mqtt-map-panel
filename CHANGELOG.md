@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- Layout: nodes are pushed off links they do not belong to, and those links bend away (options: *keep nodes off
+  links*, 0 turns it off).
 - README: `networkmap_fast` is merged into zigbee2mqtt-user-extensions, link to it there.
 - Panel: **devices ▾** dropdown in the toolbar. With a node selected it lists that device and its neighbours with
   both LQI directions, otherwise every device (the "find" text filters it). Click a name to select it on the map;

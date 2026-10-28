@@ -10,7 +10,7 @@ const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan
 const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
-const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1' };
+const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1', avoid: 'z2m_map_avoid' };
 
 let d3Ready;
 function loadD3() {
@@ -212,6 +212,7 @@ const BAR = `
     <label title="while this panel is open and visible it requests a scan at this interval (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
     <div id="schedNote" class="note"></div>
     <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="1" step="0.05"> <span id="springV">1.0</span></label>
+    <label title="push nodes off links they are not part of (and bend those links away) · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
     <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> drag pins nodes</label>
     <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview">reset view</button><button id="png">save PNG</button></div>
@@ -260,6 +261,38 @@ const legendHtml = smooth => smooth
   ? `<div><span class="grad" style="background:${LQ_GRADIENT}"><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span>LQI &nbsp; ${LEGEND_TAIL}</div>`
   : `<div><span class="sw" style="background:${LQ.green}"></span>LQI ≥ 80 &nbsp; <span class="sw" style="background:${LQ.orange}"></span>50–79 &nbsp; <span class="sw" style="background:${LQ.red}"></span>&lt; 50 &nbsp; ${LEGEND_TAIL}</div>`;
 const LEGEND = legendHtml(true);
+
+// d3 force: keep nodes off links they do not belong to. A node closer than its clearance to the middle part of a foreign
+// link is pushed out along the link's normal, and the link's two ends get the opposite push (split by where the node sits),
+// so the link bends away as much as the node moves. O(nodes x links) per tick, fine for a few hundred of each.
+function forceAvoidLinks() {
+  let nodes = [], links = [], strength = 1, clearance = d => 30;
+  function force(alpha) {
+    if (!strength) return;
+    const k = strength * alpha;
+    for (const l of links) {
+      if (l.revealed) continue;   // drawn because of a selection, not part of the layout
+      const a = l.source, b = l.target; if (typeof a !== 'object' || typeof b !== 'object') continue;
+      const dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy; if (len2 < 1) continue;
+      const minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x), minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y);
+      for (const n of nodes) {
+        if (n === a || n === b) continue;
+        const c = clearance(n);
+        if (n.x < minX - c || n.x > maxX + c || n.y < minY - c || n.y > maxY + c) continue;   // cheap reject
+        const t = ((n.x - a.x) * dx + (n.y - a.y) * dy) / len2; if (t <= 0.05 || t >= 0.95) continue;
+        const px = a.x + t * dx - n.x, py = a.y + t * dy - n.y, d = Math.hypot(px, py) || 0.01; if (d >= c) continue;
+        const push = k * (c - d) / d * 5, fx = -px * push, fy = -py * push;   // away from the link
+        n.vx += fx; n.vy += fy;
+        a.vx -= fx * (1 - t) * 0.5; a.vy -= fy * (1 - t) * 0.5; b.vx -= fx * t * 0.5; b.vy -= fy * t * 0.5;
+      }
+    }
+  }
+  force.initialize = n => { nodes = n; };
+  force.links = l => { links = l; return force; };
+  force.strength = v => { strength = v; return force; };
+  force.clearance = f => { clearance = f; return force; };
+  return force;
+}
 
 class ZigbeeMapPanel extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: 'open' }); this._hass = null; this._built = false; this.sel = new Set(); this.data = null; }
@@ -459,11 +492,13 @@ class ZigbeeMapPanel extends HTMLElement {
     // rest length follows link quality (weaker direction): LQI 255 -> short, LQI 0 / one-sided -> long
     const q = l => (l.oneSided || !(l.min >= 0) || l.min > 255) ? 0 : l.min / 255;
     this.lqilen = Math.min(3, +lsGet(LS.lqilen, 1)); if (!(this.lqilen >= 0)) this.lqilen = 1;
+    this.avoid = Math.min(2, +lsGet(LS.avoid, 1)); if (!(this.avoid >= 0)) this.avoid = 1;
     // k = 0: fixed lengths (210 / 60) · k = 1: 120..300 / 40..100 by LQI · linear in k, floored so strong links never collapse at high contrast
     const dist = l => { const k = this.lqilen, end = l.s.isEnd || l.t.isEnd; return Math.max(end ? 25 : 50, end ? ((60 - 20 * k) + 60 * k * (1 - q(l))) : ((210 - 90 * k) + 180 * k * (1 - q(l)))) * this.spring; };
     const charge = d => (d.isEnd ? -150 : -1100) * this.spring;
     this.sim = d3.forceSimulation().force('link', d3.forceLink().id(d => d.id).distance(dist).strength(l => l.revealed ? 0 : l.oneSided ? 0.15 : 0.5))
       .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
+      .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
       .on('tick', () => { this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
     const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'smooth', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
@@ -486,6 +521,8 @@ class ZigbeeMapPanel extends HTMLElement {
     $('hide').oninput = () => { $('hideV').textContent = hideLabel(+$('hide').value); this.render(); };
     $('spring').value = this.spring; $('springV').textContent = this.spring.toFixed(1);
     $('spring').oninput = () => { this.spring = +$('spring').value; $('springV').textContent = this.spring.toFixed(1); lsSet(LS.spring, this.spring); this.sim.force('link').distance(dist); this.sim.force('charge').strength(charge); this.sim.alpha(0.5).restart(); };
+    $('avoid').value = this.avoid; $('avoidV').textContent = this.avoid.toFixed(1);
+    $('avoid').oninput = () => { this.avoid = +$('avoid').value; $('avoidV').textContent = this.avoid.toFixed(1); lsSet(LS.avoid, this.avoid); this.sim.force('avoid').strength(this.avoid); this.sim.alpha(0.5).restart(); };
     $('lqilen').value = this.lqilen; $('lqilenV').textContent = this.lqilen.toFixed(2).replace(/0$/, '');
     $('lqilen').oninput = () => { this.lqilen = +$('lqilen').value; $('lqilenV').textContent = this.lqilen.toFixed(2).replace(/0$/, ''); lsSet(LS.lqilen, this.lqilen); this.sim.force('link').distance(dist); this.sim.alpha(0.5).restart(); };
     this.pinMode = !!lsGet(LS.pin, false); $('pinmode').checked = this.pinMode;
@@ -496,7 +533,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('resetview').onclick = () => { this.svg.transition().duration(300).call(this.zoom.transform, d3.zoomIdentity); };
     $('png').onclick = () => this.savePng();
     $('resetall').onclick = () => {
-      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel]) { try { localStorage.removeItem(k); } catch (e) {} }
+      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid]) { try { localStorage.removeItem(k); } catch (e) {} }
       const keep = this.data ? { map: lsGet(LS.map, null) } : null;
       this.sim.stop(); clearTimeout(this._posT); this.data = null; this.selected = null; this.warm = false; this._zoomT = null;
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }
@@ -588,7 +625,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
     this._deg = deg;
     const cv = $('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2;
-    this.sim.nodes(nodes); this.sim.force('link').links(links);
+    this.sim.nodes(nodes); this.sim.force('link').links(links); this.sim.force('avoid').links(links);
     this.applyGravity();
     for (const n of nodes) if (n.x == null) { n.x = cx + (Math.random() - 0.5) * 80; n.y = cy + (Math.random() - 0.5) * 80; }
     if (!this.warm) { this.warm = true; this.sim.force('center', d3.forceCenter(cx, cy)); this.sim.alpha(1); for (let i = 0; i < 250; i++) this.sim.tick(); }
