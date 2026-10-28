@@ -204,7 +204,6 @@ const STYLE = `
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
   .lql { pointer-events:none; }
   .lql text { font-size:9px; font-weight:600; fill:#10131a; }
-  .lql rect { stroke:var(--bgc); stroke-width:1px; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node.end text { font-size:9.5px; fill:var(--muted); }
   .node, .node * { cursor:pointer; }   /* a node is clicked (select) far more often than dragged */
@@ -867,9 +866,28 @@ class ZigbeeMapPanel extends HTMLElement {
   // the label pill takes the size of its text (measured once per render; a hidden text has no size, so only when shown)
   sizeLabels() {
     if (!this.$('showLql').checked) return;
-    this.glq.selectAll('g.lql').each(function () { const t = this.querySelector('text'), r = this.querySelector('rect'); let w = 30, h = 11;
+    this.glq.selectAll('g.lql').each(function (l) { const t = this.querySelector('text'), r = this.querySelector('rect'); let w = 30, h = 11;
       try { const b = t.getBBox(); if (b.width > 0) { w = b.width + 8; h = b.height + 2; } } catch (e) {}
+      l._lw = w; l._lh = h;
       r.setAttribute('x', -w / 2); r.setAttribute('y', -h / 2); r.setAttribute('width', w); r.setAttribute('height', h); });
+  }
+  // label pills slide along their own link when they overlap another pill (hubs), and drift back to the middle when free.
+  // Pills are treated as discs of half their width; a few small steps per frame, so they move smoothly
+  spaceLabels() {
+    if (!this.$('showLql').checked || !this.data) return;
+    const ls = this.data.links.filter(l => l._lw && l.source.x != null), P = [];
+    for (const l of ls) { const t = l._lt ?? 0.5; P.push({ l, x: l.source.x + (l.target.x - l.source.x) * t, y: l.source.y + (l.target.y - l.source.y) * t, r: l._lw * 0.5 }); }
+    for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
+      const a = P[i], b = P[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), min = (a.r + b.r) * 0.85;
+      if (d >= min || d === 0) continue;
+      // each pill moves along its own link, away from the other pill
+      for (const [p, sx, sy] of [[a, -dx, -dy], [b, dx, dy]]) {
+        const l = p.l, ux = l.target.x - l.source.x, uy = l.target.y - l.source.y, len = Math.hypot(ux, uy) || 1;
+        const dir = Math.sign(sx * ux + sy * uy) || 1;
+        l._lt = Math.max(0.2, Math.min(0.8, (l._lt ?? 0.5) + dir * Math.min(0.03, (min - d) / len)));
+      }
+    }
+    for (const l of ls) if (l._lt != null) l._lt += (0.5 - l._lt) * 0.04;
   }
   draw() {
     // each link runs from rim to rim of its own two nodes (gap = node radius), so a link passing under a third node is not cut
@@ -892,8 +910,9 @@ class ZigbeeMapPanel extends HTMLElement {
     });
     // label text: what the left-hand node hears / what the right-hand node hears, whichever end that is on screen
     const fmt = v => v == null ? '–' : v;
+    this.spaceLabels();
     this.glq.selectAll('g.lql').attr('transform', l => { const dx = l.target.x - l.source.x, dy = l.target.y - l.source.y; let a = Math.atan2(dy, dx) * 180 / Math.PI; if (a > 90 || a < -90) a += 180;   // never upside down
-      return `translate(${(l.source.x + l.target.x) / 2},${(l.source.y + l.target.y) / 2}) rotate(${a})`; })
+      const t = l._lt ?? 0.5; return `translate(${l.source.x + dx * t},${l.source.y + dy * t}) rotate(${a})`; })
       .select('text').text(l => l.source.x <= l.target.x ? `${fmt(l.lqS)} / ${fmt(l.lqT)}` : `${fmt(l.lqT)} / ${fmt(l.lqS)}`);
     this.gn.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`).classed('pinned', d => d.fx != null);
   }
