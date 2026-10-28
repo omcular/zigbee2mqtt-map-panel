@@ -137,7 +137,9 @@ const STYLE = `
   details.dd .menu input[type=number] { width:64px; background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:2px 4px; }
   details#help .menu { --mw:560px; gap:6px; font-size:12px; line-height:1.45; }
   details#help h4 { margin:4px 0 0; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-  details#help dl { display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; margin:0; }
+  details#help dl { display:grid; grid-template-columns:fit-content(40%) minmax(0, 1fr); gap:3px 12px; margin:0; }
+  details#help dd { min-width:0; overflow-wrap:anywhere; }
+  @media (max-width:520px) { details#help dl { grid-template-columns:minmax(0, 1fr); gap:0; } details#help dt { margin-top:6px; } }
   details#help dt { color:var(--primary-text-color); white-space:nowrap; }
   details#help dd { margin:0; color:var(--muted); }
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
