@@ -24,6 +24,8 @@ section and uses it as the GitHub release notes.
 - Devices list: sortable by name, type, LQI (weaker direction first, then the stronger) and last seen.
 - Help: each entry as a small heading with its explanation indented below (was a two-column table).
 - Dropdowns stay inside the panel: shifted left when they would stick out, narrower and wrapping on a phone.
+- Link tooltip: routes laid out one line per direction, "A → B → destinations", destinations named, status only when
+  not active.
 - Node and link tooltips stay inside the map area: flipped to the other side of the pointer near an edge, never cut off
   on a phone. On touch, a tap on an open tooltip closes it instead of reaching the map below.
 - Two-finger twist rotates the map on touch screens (with a small dead zone, so a pinch does not wobble).

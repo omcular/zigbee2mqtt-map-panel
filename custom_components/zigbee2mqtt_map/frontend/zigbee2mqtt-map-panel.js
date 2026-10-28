@@ -187,6 +187,9 @@ const STYLE = `
   #tip.touch, #tip.pinned { pointer-events:auto; }
   #tip.pinned { cursor:pointer; border-color:var(--primary-color,#03a9f4); }
   #tip .tiplinks { margin-top:6px; display:flex; gap:12px; } #tip .tiplinks a { color:var(--primary-color,#03a9f4); text-decoration:none; font-weight:600; cursor:pointer; }
+  #tip .routes { margin-top:6px; border-top:1px solid var(--divider-color,#444); padding-top:4px; white-space:normal; }
+  #tip .routes .h { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; }
+  #tip .routes .rt { margin:2px 0 0 10px; text-indent:-10px; }
   #tip .tiphint { margin-top:4px; font-size:10px; color:var(--muted); } #tip .muted { color:var(--muted); }
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:min(380px, calc(100% - 8px)); box-sizing:border-box; overflow-wrap:anywhere; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   #canvas > svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
@@ -700,7 +703,24 @@ class ZigbeeMapPanel extends HTMLElement {
     const width = l => this.linkWidth(l);
     const fmt = v => v == null ? '–' : v, key = l => l.s.id + '|' + l.t.id;
     // routing-table entries, identical ones collapsed (tables often hold a dozen inactive entries for one destination)
-    const routesText = rs => { const c = {}; for (const r of rs) { const k = `${byId[r.via]?.name ?? r.via} → nwk ${r.to} ${r.status}`; c[k] = (c[k] || 0) + 1; } return Object.entries(c).map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join('; '); };
+    // routes over a link, one line per direction: "A → B → destinations". A route entry sits in A's table (via) and names the
+    // next hop, which is the other end of this link; the destination is a network address, named when we know the device
+    const STATUS = { ACTIVE: '', DISCOVERY_UNDERWAY: 'discovering', DISCOVERY_FAILED: 'failed', INACTIVE: 'inactive', VALIDATION_UNDERWAY: 'validating' };
+    const byNwk = {}; for (const n of this.data.nodes) if (n.nwk != null) byNwk[n.nwk] = n;
+    const routesHtml = l => {
+      const dirs = new Map();   // via ieee -> Map(dest label -> count)
+      for (const r of l.routes) {
+        const d = dirs.get(r.via) ?? new Map(); dirs.set(r.via, d);
+        const st = STATUS[r.status] ?? String(r.status).toLowerCase(), label = `${byNwk[r.to]?.name ?? `nwk ${r.to}`}${st ? ` <span class="muted">(${st})</span>` : ''}`;
+        d.set(label, (d.get(label) || 0) + 1);
+      }
+      const rows = [];
+      for (const [via, d] of dirs) {
+        const from = byId[via], to = from === l.s ? l.t : l.s; if (!from) continue;
+        rows.push(`<div class="rt"><b>${esc(from.name)}</b> → <b>${esc(to.name)}</b> → ${[...d].map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join(', ')}</div>`);
+      }
+      return rows.length ? `<div class="routes"><div class="h">routes over this link</div>${rows.join('')}</div>` : '';
+    };
     // each link = a group with the visible line and a wide invisible "hit" line for hovering
     const link = this.gl.selectAll('g.link').data(links, key); link.exit().remove();
     const le = link.enter().append('g').attr('class', 'link');
@@ -709,7 +729,7 @@ class ZigbeeMapPanel extends HTMLElement {
     lm.select('line.vis').attr('stroke', color).attr('stroke-width', width).attr('stroke-dasharray', l => l.oneSided ? '4 4' : null);
     lm.select('line.hit')
       .on('mouseenter', (e, l) => this._pinned || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
-        esc(`${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})` + (l.routes.length ? `\nroutes: ${routesText(l.routes)}` : '')), true))
+        esc(`${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})`) + (l.routes.length ? routesHtml(l) : ''), true))
       .on('mousemove', e => { if (!this._pinned) this.moveTip(e); }).on('mouseleave', () => { if (!this._pinned) this.hideTip(); });
     const lql = this.glq.selectAll('text').data(links, key); lql.exit().remove();
     lql.enter().append('text').attr('class', 'lql').attr('text-anchor', 'middle').merge(lql).text(l => `${fmt(l.lqS)} / ${fmt(l.lqT)}`).style('display', $('showLql').checked ? null : 'none');
