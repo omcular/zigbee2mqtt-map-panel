@@ -832,7 +832,7 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   // constant width: colour alone carries the LQI; one-sided links are hairlines
   // routes overlay: links carrying active routes get thicker, the more routes the thicker; the rest keep their width
-  linkWidth(l) { if (l.oneSided) return 0.8; const n = this.routesOn() ? (l.rA?.length || 0) : 0; return n ? Math.min(10, 3 + 1.1 * n) : 3; }
+  linkWidth(l) { if (l.oneSided) return 0.8; const n = this.routesOn() ? (l.rA?.length || 0) : 0; return n ? Math.min(7, 3 + 0.5 * n) : 3; }
   routesOn() { return !!this.$('showRoutes')?.checked; }
   // the chain of next hops from a router to the coordinator, as [links], or null when the map holds no such route
   pathHome(n) {
@@ -859,7 +859,7 @@ class ZigbeeMapPanel extends HTMLElement {
       const ux = dx / len, uy = dy / len;
       if (len > rs + rt + 4) { x1 += ux * rs; y1 += uy * rs; x2 -= ux * rt; y2 -= uy * rt; } else { x2 = x1; y2 = y1; }
       // route arrows: scaled with the line's width, tip at the far rim, and the line stops where the arrow starts
-      const aS = ro && l.rVia?.has(l.s.id), aT = ro && l.rVia?.has(l.t.id), k = (aS || aT) ? Math.max(1, (this.classList.contains('onpath') ? 12 : self.linkWidth(l)) / 3) : 1, aLen = 9 * k, deg = Math.atan2(dy, dx) * 180 / Math.PI;
+      const aS = ro && l.rVia?.has(l.s.id), aT = ro && l.rVia?.has(l.t.id), k = (aS || aT) ? 1 + Math.max(0, (this.classList.contains('onpath') ? 12 : self.linkWidth(l)) / 3 - 1) / 2 : 1, aLen = 9 * k - 1, deg = Math.atan2(dy, dx) * 180 / Math.PI;
       const tipS = [x2, y2], tipT = [x1, y1];
       if (aS) { x2 -= ux * aLen; y2 -= uy * aLen; }
       if (aT) { x1 += ux * aLen; y1 += uy * aLen; }
