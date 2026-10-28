@@ -107,7 +107,7 @@ const STYLE = `
   #bar label { display:flex; gap:5px; align-items:center; white-space:nowrap; }
   #bar input[type=text] { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 6px; width:150px; }
   #bar input[type=range] { width:90px; }
-  #bar input#hide { width:150px; }
+  #lq { display:flex; align-items:center; white-space:nowrap; padding-top:4px; }
   #bar button { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 8px; cursor:pointer; }
   #bar button:hover { border-color:#888; }
   #bar button.primary { border-color:var(--primary-color,#03a9f4); color:var(--primary-color,#03a9f4); }
@@ -165,14 +165,12 @@ const STYLE = `
   details#help code { font-size:11px; }
   details#help a { color:var(--primary-color,#03a9f4); }
   details.dd .menu input[type=range] { width:120px; }
-  #legend { position:absolute; left:10px; bottom:10px; background:var(--panel); border:1px solid var(--divider-color,#333); border-radius:6px; padding:6px 9px; font-size:11px; color:var(--muted); max-width:min(900px,calc(100% - 40px)); }
-  #legend span.sw { display:inline-block; width:20px; height:3px; vertical-align:middle; margin-right:5px; }
-  #legend span.grad { position:relative; display:inline-block; width:120px; height:5px; border-radius:2px; vertical-align:middle; margin:0 20px 10px 6px; }
-  #legend span.grad { cursor:pointer; touch-action:none; } #legend span.grad.drag { cursor:ew-resize; }
-  #legend span.grad::before { content:''; position:absolute; left:-4px; right:-4px; top:-8px; bottom:-14px; }   /* bigger hit area */
-  #legend span.grad b.mk { position:absolute; top:-8px; width:0; height:0; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid var(--primary-text-color,#fff); border-bottom:0; pointer-events:none; }
-  #legend span.grad b.mk.off { display:none; }
-  #legend span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
+  #lq span.grad { position:relative; display:inline-block; width:204px; height:6px; border-radius:3px; vertical-align:middle; margin:0 12px 10px 8px; }
+  #lq span.grad { cursor:pointer; touch-action:none; } #lq span.grad.drag { cursor:ew-resize; }
+  #lq span.grad::before { content:''; position:absolute; left:-4px; right:-4px; top:-8px; bottom:-14px; }   /* bigger hit area */
+  #lq span.grad b.mk { position:absolute; top:-8px; width:0; height:0; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid var(--primary-text-color,#fff); border-bottom:0; pointer-events:none; }
+  #lq span.grad b.mk.off { display:none; }
+  #lq span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
   #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:380px; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   #canvas > svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
   #canvas > svg:active { cursor:grabbing; }
@@ -203,7 +201,7 @@ const STYLE = `
 
 const BAR = `
   <ha-menu-button></ha-menu-button>
-  <label title="show only links whose weaker direction is above this LQI · far left: show all">Min LQI <input type="range" id="hide" min="0" max="255" value="0" step="5"> <span id="hideV">off</span></label>
+  <span id="lq" title="show only links whose weaker direction is above this LQI · press or drag on the bar · far left: show all">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden> <span id="hideV">off</span></span>
   <label>find <input type="text" id="find" placeholder="node name…"></label>
   <details id="devs" class="dd"><summary>devices ▾</summary><div class="menu" id="devMenu"></div></details>
   <details id="opts" class="dd"><summary>options ▾</summary><div class="menu">
@@ -255,7 +253,7 @@ const BAR = `
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
       <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "routes on pull" also reads routing tables (slower). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
-      <dt>Min LQI</dt><dd>shows only links whose weaker direction is above the chosen LQI; far left shows all. Until you move it, it follows the "redundant" threshold ("auto"): the mesh first, marginal links on demand. Bad links are easiest found by colour with the slider at off</dd>
+      <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only links whose weaker direction is above the chosen LQI (the white marker); far left shows all. Until you move it, it follows the "redundant" threshold ("auto"): the mesh first, marginal links on demand. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
@@ -265,9 +263,6 @@ const BAR = `
   <a id="gear" href="/config/integrations/integration/zigbee2mqtt_map" data-nav title="integration settings: Zigbee2MQTT frontend URL, sidebar title, administrators only · entities, reload">⚙</a>
   <div id="stale"><span id="staleMsg"></span><button id="reload">reload</button></div>`;
 
-const LEGEND_TAIL = `<span class="sw" style="height:0;border-top:2px dashed #999"></span>one side only &nbsp;·&nbsp; a / b = what left hears / what right hears &nbsp;·&nbsp; see "help ▾"`;
-const legendHtml = () => `<div><span class="grad" title="press or drag: set Min LQI" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span>LQI &nbsp; ${LEGEND_TAIL}</div>`;
-const LEGEND = legendHtml();
 
 // d3 force: keep nodes off links they do not belong to. A node closer than its clearance to the middle part of a foreign
 // link is pushed out along the link's normal, and the link's two ends get the opposite push (split by where the node sits),
@@ -340,7 +335,7 @@ class ZigbeeMapPanel extends HTMLElement {
 
   async build() {
     const r = this.shadowRoot;
-    r.innerHTML = `<style>${STYLE}</style><div id="wrap"><div id="bar">${BAR}</div><div id="canvas"><svg></svg><div id="legend">${LEGEND}</div><div id="tip"></div><div id="side"><div class="sidebar"><span id="sideTitle"></span><a id="sideExt" target="_blank" rel="noopener" title="open this page in a new tab">↗ new tab</a><button id="sideClose" title="back to the map">✕ close</button></div><iframe id="sideFrame" title="Zigbee2MQTT"></iframe></div></div></div>`;
+    r.innerHTML = `<style>${STYLE}</style><div id="wrap"><div id="bar">${BAR}</div><div id="canvas"><svg></svg><div id="tip"></div><div id="side"><div class="sidebar"><span id="sideTitle"></span><a id="sideExt" target="_blank" rel="noopener" title="open this page in a new tab">↗ new tab</a><button id="sideClose" title="back to the map">✕ close</button></div><iframe id="sideFrame" title="Zigbee2MQTT"></iframe></div></div></div>`;
     const mb = r.querySelector('ha-menu-button'); mb.hass = this._hass; mb.narrow = this._narrow;
     this.$ = id => r.getElementById(id);
     this.$('pull').onclick = () => this.pull();
@@ -588,11 +583,11 @@ class ZigbeeMapPanel extends HTMLElement {
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
-    // the legend's colour bar doubles as a Min LQI slider: a marker shows the setting, press or drag on the bar sets it
-    this.updLegendMk = () => { const mk = $('legend').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.classList.toggle('off', !(v > 0)); mk.style.left = (v / 2.55) + '%'; };
+    // Min LQI: the LQI colour bar is the slider, a marker shows the setting, press or drag on the bar sets it
+    this.updLegendMk = () => { const mk = $('lq').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.classList.toggle('off', !(v > 0)); mk.style.left = (v / 2.55) + '%'; };
     const setFromBar = (g, x) => { const r = g.getBoundingClientRect(), v = Math.max(0, Math.min(255, Math.round(((x - r.left) / r.width) * 255 / 5) * 5)), h = $('hide');
       if (+h.value === v && lsGet(LS.hideSet, false)) return; h.value = v; lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); };
-    $('legend').addEventListener('pointerdown', e => {
+    $('lq').addEventListener('pointerdown', e => {
       const g = e.target.closest?.('span.grad'); if (!g || e.button > 0) return;
       e.preventDefault(); try { g.setPointerCapture(e.pointerId); } catch (err) {} g.classList.add('drag'); setFromBar(g, e.clientX);
       // the value moves in steps of 5, so a full sweep re-renders at most ~50 times: no throttling needed
