@@ -138,6 +138,8 @@ const STYLE = `
   details.dd { position:relative; }
   details.dd summary { list-style:none; cursor:pointer; background:var(--bgc); border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 8px; user-select:none; }
   details.dd summary::-webkit-details-marker { display:none; }
+  details.dd summary i.arr { display:inline-block; width:0; height:0; margin-left:3px; vertical-align:middle; border:4px solid transparent; border-top:5px solid currentColor; border-bottom:0; }
+  #wrap.swap details.dd summary i.arr { border-top:0; border-bottom:5px solid currentColor; }   /* menus open upwards there */
   details.dd .menu { position:absolute; top:calc(100% + 4px); left:0; z-index:6; display:flex; flex-direction:column; gap:8px; box-sizing:border-box; min-width:min(var(--mw,250px), var(--avail,100vw)); max-width:var(--avail,100vw); padding:10px 12px; background:var(--panel); border:1px solid var(--divider-color,#444); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.4); }
   details.dd .menu .row { display:flex; gap:6px; flex-wrap:wrap; }
   details.dd .menu .sep { border-top:1px solid var(--divider-color,#444); margin:2px 0; }
@@ -216,8 +218,8 @@ const BAR = `
   <ha-menu-button></ha-menu-button>
   <span id="lq" title="show only links whose weaker direction is above this LQI · press or drag on the bar · far left: show all">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
   <label>find <input type="text" id="find" placeholder="node name…"></label>
-  <details id="devs" class="dd"><summary>devices ▾</summary><div class="menu" id="devMenu"></div></details>
-  <details id="opts" class="dd"><summary>options ▾</summary><div class="menu">
+  <details id="devs" class="dd"><summary>devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
+  <details id="opts" class="dd"><summary>options <i class="arr"></i></summary><div class="menu">
     <label><input type="checkbox" id="showEnd"> end devices</label>
     <label><input type="checkbox" id="showOne"> one-sided / stale links</label>
     <label title="when a node is selected, also reveal its one-sided (dashed) links; links hidden by the hide slider are always revealed"><input type="checkbox" id="selOne"> … also on a selected node</label>
@@ -239,7 +241,7 @@ const BAR = `
     <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview">reset view</button><button id="png">save PNG</button></div>
     <div class="row"><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept)">reset to defaults</button></div>
   </div></details>
-  <details id="help" class="dd"><summary>help ▾</summary><div class="menu">
+  <details id="help" class="dd"><summary>help <i class="arr"></i></summary><div class="menu">
     <h4>Mouse</h4>
     <dl>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
