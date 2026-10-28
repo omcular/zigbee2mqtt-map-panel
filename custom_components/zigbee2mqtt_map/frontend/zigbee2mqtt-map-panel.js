@@ -565,7 +565,7 @@ class ZigbeeMapPanel extends HTMLElement {
       // single click (delayed so a double-click does not also select) toggles the neighbour view, double-click toggles the pin
       .on('click', (e, d) => { e.stopPropagation(); clearTimeout(self._clickT); const mod = e.ctrlKey || e.metaKey || e.shiftKey; self._clickT = setTimeout(() => self.clickSelect(d, { ctrlKey: mod }), 260); })
       .on('dblclick', (e, d) => { e.stopPropagation(); clearTimeout(self._clickT); if (d.fx != null) { d.fx = d.fy = null; self.sim.alpha(0.3).restart(); } else { d.fx = d.x; d.fy = d.y; } self.savePos(); self.draw(); })
-      .on('mouseenter', (e, d) => this.showTip(e, `<div class="title">${esc(d.name)}</div>` + esc(`${d.type}${d.vendor ? ` · ${d.vendor} ${d.model}` : ''}${d.desc ? `\n${d.desc}` : ''}\nIEEE ${d.id}${d.nwk != null ? `  nwk ${d.nwk}` : ''}${d.lastSeen ? `\nlast seen ${new Date(d.lastSeen).toLocaleString()}` : ''}\nlinks: ${this.data.links.filter(l => l.s === d || l.t === d).length}`), true))
+      .on('mouseenter', (e, d) => this.showTip(e, `<div class="title">${esc(d.name)}</div>` + esc(`${d.type}${d.vendor ? ` · ${d.vendor} ${d.model}` : ''}${d.desc ? `\n${d.desc}` : ''}\nIEEE ${d.id}${d.nwk != null ? `  nwk ${d.nwk}` : ''}${d.lastSeen ? `\n${d.type === 'Coordinator' ? 'Zigbee2MQTT running since' : 'last seen'} ${new Date(d.lastSeen).toLocaleString()}` : ''}\nlinks: ${this.data.links.filter(l => l.s === d || l.t === d).length}`), true))
       .on('mousemove', e => this.moveTip(e)).on('mouseleave', () => this.hideTip());
     ne.append('circle').attr('class', 'halo').attr('r', d => d.type === 'Coordinator' ? 22 : d.isEnd ? 11 : 19);
     ne.append('circle').attr('class', 'ring').attr('r', d => d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12).attr('fill', 'none').attr('stroke', 'none').attr('stroke-width', 2);
@@ -698,7 +698,8 @@ class ZigbeeMapPanel extends HTMLElement {
     const box = this.$('devMenu'); if (!box) return;
     if (!this.data) { box.innerHTML = '<div class="muted">no map yet</div>'; return; }
     const sel = this.selected, reg = this._reg || {}, z2m = this.z2mUrl, q = this.$('find').value.trim().toLowerCase();
-    const seen = n => n.lastSeen ? ago(Date.now() - n.lastSeen) : (n.type === 'Coordinator' ? '' : '?');
+    // zigbee-herdsman stamps the coordinator's lastSeen once, at start-up, and never on traffic: it is the Z2M start time
+    const seen = n => !n.lastSeen ? (n.type === 'Coordinator' ? '' : '?') : n.type === 'Coordinator' ? `Z2M up ${ago(Date.now() - n.lastSeen).replace(' ago', '')}` : ago(Date.now() - n.lastSeen);
     // Z2M 2.x route: #/device/<source index>/<ieee>, source 0 = the first (only) instance. On a fresh load the frontend
     // honours exactly this form; with a tab suffix (/info) it falls back to the device list
     const z2mLink = n => !z2m ? '' : z2m.startsWith('/')
