@@ -200,9 +200,9 @@ const STYLE = `
   #tip .title { font-size:16px; font-weight:600; line-height:1.2; margin-bottom:2px; }
   #canvas { position:relative; order:2; flex:1 1 auto; min-height:0; }
   .link line.vis { stroke-linecap:round; pointer-events:none; }
-  .link path.arr { pointer-events:none; }
-  .link.onpath line.vis { stroke-width:10px !important; }   /* the selected router's path to the coordinator */
-  .link.onpath path.arr { display:none !important; }
+  .link line.glow { stroke:#fff; stroke-opacity:.45; stroke-linecap:round; pointer-events:none; filter:url(#glow); }
+  .link path.arr { fill:#fff; fill-opacity:.9; pointer-events:none; }
+  .link.onpath line.glow { stroke-opacity:.9; }   /* the selected router's path to the coordinator */
   .link line.hit { stroke:transparent; stroke-width:6px; }
   .link.dim, .lql.dim { opacity:0.3; }
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
@@ -237,7 +237,7 @@ const BAR = `
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
     <label>show names for <select id="names"><option value="none">none</option><option value="routers">routers only</option><option value="all" selected>all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> show LQI labels</label>
-    <label title="draw what the routing tables say: links that carry active routes thick (the more routes, the thicker), the rest thin, arrows for the direction; a selected router shows its path to the coordinator. Needs a scan with &quot;routes on pull&quot;"><input type="checkbox" id="showRoutes"> routes overlay</label>
+    <label title="draw what the routing tables say: a white glow under every link that carries active routes (the more routes, the wider), an arrow at the end the traffic goes to; a selected router shows its path to the coordinator in a brighter glow. Needs a scan with &quot;routes on pull&quot;"><input type="checkbox" id="showRoutes"> routes overlay</label>
     <div id="routesNote" class="note"></div>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg"> show device images</label>
     <label title="size of the device images (end devices get two thirds)">image size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
@@ -273,7 +273,7 @@ const BAR = `
       <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "one-sided / stale on selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map (again: none), <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
       <dt>click / tap node: card</dt><dd>besides selecting the node, its card stays open with "Z2M" and "HA" links (as in the devices list). A click on the card, <kbd>Esc</kbd>, the background or another node closes it; clicking the selected node again brings it back</dd>
-      <dt>routes overlay</dt><dd>(options) what the routing tables say, after a scan with "routes on pull": links carrying active routes are thick, the more routes the thicker, arrows show the direction, links without routes are thin. Select a router and its path to the coordinator is drawn extra thick; the node card names the hops. The routing tables hold where traffic actually goes, the neighbour tables only who hears whom</dd>
+      <dt>routes overlay</dt><dd>(options) what the routing tables say, after a scan with "routes on pull": links carrying active routes get a white glow, the more routes the wider, with an arrow at the end the traffic flows to. Select a router and its path to the coordinator glows brighter; the node card names the hops. The routing tables hold where traffic actually goes, the neighbour tables only who hears whom</dd>
       <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
       <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
     </dl>
@@ -579,6 +579,7 @@ class ZigbeeMapPanel extends HTMLElement {
   initGraph() {
     const r = this.shadowRoot, $ = this.$;
     this.svg = d3.select($('canvas').querySelector(':scope > svg')); this.tip = d3.select($('tip'));
+    this.svg.append('defs').html('<filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.2"/></filter>');
     this.g = this.svg.append('g'); this.gl = this.g.append('g'); this.glq = this.g.append('g'); this.gn = this.g.append('g');
     // Ctrl is excluded on purpose: Ctrl-wheel stays browser zoom, Ctrl-drag rotates (below); middle button rotates too
     this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { this._zoomT = e.transform; this.g.attr('transform', e.transform); }).on('end', () => this.saveView()).filter(e => (e.type === 'wheel' || !e.target.closest?.('.node')) && !e.button && !e.ctrlKey);   // nodes are for dragging, but the wheel zooms everywhere
@@ -738,13 +739,14 @@ class ZigbeeMapPanel extends HTMLElement {
     // each link = a group with the visible line and a wide invisible "hit" line for hovering
     const link = this.gl.selectAll('g.link').data(links, key); link.exit().remove();
     const le = link.enter().append('g').attr('class', 'link');
-    le.append('line').attr('class', 'vis'); le.append('line').attr('class', 'hit');
-    le.append('path').attr('class', 'arr arrS').attr('d', 'M-6,-4.5 L6,0 L-6,4.5 Z'); le.append('path').attr('class', 'arr arrT').attr('d', 'M-6,-4.5 L6,0 L-6,4.5 Z');
+    le.append('line').attr('class', 'glow'); le.append('line').attr('class', 'vis'); le.append('line').attr('class', 'hit');
+    le.append('path').attr('class', 'arr arrS').attr('d', 'M-9,-5 L0,0 L-9,5 Z'); le.append('path').attr('class', 'arr arrT').attr('d', 'M-9,-5 L0,0 L-9,5 Z');
     const lm = le.merge(link);
     lm.select('line.vis').attr('stroke', color).attr('stroke-width', width).attr('stroke-dasharray', l => l.oneSided ? '4 4' : null);
     const ro = this.routesOn();
-    lm.select('path.arrS').attr('fill', color).style('display', l => ro && l.rVia?.has(l.s.id) ? null : 'none');
-    lm.select('path.arrT').attr('fill', color).style('display', l => ro && l.rVia?.has(l.t.id) ? null : 'none');
+    lm.select('line.glow').attr('stroke-width', l => this.glowWidth(l)).style('display', l => ro && l.rA?.length ? null : 'none');
+    lm.select('path.arrS').style('display', l => ro && l.rVia?.has(l.s.id) ? null : 'none');
+    lm.select('path.arrT').style('display', l => ro && l.rVia?.has(l.t.id) ? null : 'none');
     $('routesNote').textContent = ro && !this._hasRoutes ? 'this map has no routes: scan with "routes on pull"' : '';
     lm.select('line.hit')
       .on('mouseenter', (e, l) => this._pinned || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
@@ -832,11 +834,9 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('y', d3.forceY(d => iso(d) ? parkY : cy).strength(d => iso(d) ? 0.25 : 0.03));
   }
   // constant width: colour alone carries the LQI; one-sided links are hairlines
-  linkWidth(l) {
-    if (l.oneSided) return 0.8;
-    if (this.routesOn()) return l.rA?.length ? Math.min(9, 3 + 1.2 * l.rA.length) : 1.2;   // overlay: thickness = number of active routes
-    return 3;
-  }
+  linkWidth(l) { return l.oneSided ? 0.8 : 3; }
+  // routes overlay: a white, blurred line under the coloured one, wider the more active routes the link carries
+  glowWidth(l) { return Math.min(16, 5 + 1.6 * (l.rA?.length || 0)); }
   routesOn() { return !!this.$('showRoutes')?.checked; }
   // the chain of next hops from a router to the coordinator, as [links], or null when the map holds no such route
   pathHome(n) {
@@ -862,8 +862,8 @@ class ZigbeeMapPanel extends HTMLElement {
       if (len > rs + rt + 4) { const ux = dx / len, uy = dy / len; x1 += ux * rs; y1 += uy * rs; x2 -= ux * rt; y2 -= uy * rt; } else { x2 = x1; y2 = y1; }
       for (const ln of this.children) {
         if (ln.tagName === 'line') { ln.setAttribute('x1', x1); ln.setAttribute('y1', y1); ln.setAttribute('x2', x2); ln.setAttribute('y2', y2); }
-        else if (ln.classList.contains('arrS')) ln.setAttribute('transform', `translate(${x1 + (x2 - x1) * 0.62},${y1 + (y2 - y1) * 0.62}) rotate(${Math.atan2(dy, dx) * 180 / Math.PI})`);   // s -> t
-        else if (ln.classList.contains('arrT')) ln.setAttribute('transform', `translate(${x1 + (x2 - x1) * 0.38},${y1 + (y2 - y1) * 0.38}) rotate(${Math.atan2(dy, dx) * 180 / Math.PI + 180})`);   // t -> s
+        else if (ln.classList.contains('arrS')) ln.setAttribute('transform', `translate(${x2},${y2}) rotate(${Math.atan2(dy, dx) * 180 / Math.PI})`);   // s -> t: tip at t's rim
+        else if (ln.classList.contains('arrT')) ln.setAttribute('transform', `translate(${x1},${y1}) rotate(${Math.atan2(dy, dx) * 180 / Math.PI + 180})`);   // t -> s: tip at s's rim
       }
     });
     this.glq.selectAll('text').attr('x', l => (l.source.x + l.target.x) / 2).attr('y', l => (l.source.y + l.target.y) / 2 - 3);
@@ -880,6 +880,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const active = sel ? keep : matches;
     const linkOn = l => !active || (sel ? (this.touchesSel(l) || onPath.has(l)) : (active.has(l.s.id) || active.has(l.t.id)));
     this.gl.selectAll('g.link').classed('onpath', l => onPath.has(l));
+    if (path) this.gl.selectAll('g.link line.glow').style('display', l => onPath.has(l) || (this.routesOn() && l.rA?.length) ? null : 'none');
     this.gn.selectAll('g.node').classed('dim', d => active && !active.has(d.id)).classed('sel', d => this.sel.has(d) || (matches && matches.has(d.id) && !sel));
     this.gl.selectAll('g.link').classed('dim', l => !linkOn(l));
     this.glq.selectAll('text').classed('dim', l => !linkOn(l));
