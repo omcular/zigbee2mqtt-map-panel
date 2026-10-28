@@ -171,7 +171,7 @@ const STYLE = `
   #lq span.grad b.mk { position:absolute; top:-8px; width:0; height:0; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid var(--primary-text-color,#fff); border-bottom:0; pointer-events:none; }
   #lq span.grad b.mk.off { display:none; }
   #lq span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
-  #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:380px; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+  #tip { position:absolute; pointer-events:none; background:var(--panel); color:inherit; border:1px solid var(--divider-color,#444); border-radius:6px; padding:6px 9px; font-size:12px; max-width:min(380px, calc(100% - 8px)); box-sizing:border-box; overflow-wrap:anywhere; display:none; white-space:pre-line; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   #canvas > svg { position:absolute; inset:0; width:100%; height:100%; cursor:grab; user-select:none; -webkit-user-select:none; }   /* labels are not selectable text: Shift-click / double-click would otherwise start a selection */
   #canvas > svg:active { cursor:grabbing; }
   #canvas > svg.rotating { cursor:grabbing; }
@@ -879,7 +879,14 @@ class ZigbeeMapPanel extends HTMLElement {
     for (const a of box.querySelectorAll('a[data-side]')) a.onclick = e => { if (a.target === '_blank' && (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1)) return; e.preventDefault(); this.$('devs').open = false; this.openZ2m(this.data.byId[a.dataset.side], a.getAttribute('href')); };
   }
   showTip(e, text, html = false) { const t = this.tip.style('display', 'block'); if (html) t.html(text); else t.text(text); this.moveTip(e); }
-  moveTip(e) { const c = this.$('canvas').getBoundingClientRect(); this.tip.style('left', Math.min(e.clientX - c.left + 14, c.width - 400) + 'px').style('top', (e.clientY - c.top + 14) + 'px'); }
+  // tooltip next to the pointer, flipped to the other side when it would leave the canvas, and never outside it (phones)
+  moveTip(e) {
+    const c = this.$('canvas').getBoundingClientRect(), t = this.tip.node(), w = t.offsetWidth, h = t.offsetHeight, m = 4;
+    const x = e.clientX - c.left, y = e.clientY - c.top;
+    let left = x + 14; if (left + w > c.width - m) left = x - 14 - w; left = Math.max(m, Math.min(left, c.width - w - m));
+    let top = y + 14; if (top + h > c.height - m) top = y - 14 - h; top = Math.max(m, Math.min(top, c.height - h - m));
+    this.tip.style('left', left + 'px').style('top', top + 'px');
+  }
   hideTip() { this.tip.style('display', 'none'); }
   savePng() {
     const svgEl = this.svg.node(), c = this.$('canvas'), w = c.clientWidth, h = c.clientHeight;
