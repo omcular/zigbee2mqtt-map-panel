@@ -11,6 +11,9 @@ section and uses it as the GitHub release notes.
 - Toolbar: Min LQI is now the LQI colour bar itself (value on hover): a marker shows the setting, press or drag on the bar to change it
   (mouse and touch). The bottom legend box is gone; its notes are in the help.
 - Options: "smooth link colours" removed; link colour always runs continuously from red through orange to green.
+- Layout: the scan button and status line moved to a footer bar; option *controls at the bottom* swaps the two bars
+  (status on top, controls within thumb reach on a phone; menus then open upwards).
+- Devices not in Zigbee2MQTT's device list get no Z2M link (Zigbee2MQTT has no page for them).
 - Toolbar: "pull fresh map" is now a download icon button right before the status text.
 - Status line: "scanned 33m ago" / "scanned 2d ago" instead of the date and time; the exact time on hover.
 - Min LQI starts at the mesh's "redundant" threshold (shown as *auto*) until you move the slider, so a first look

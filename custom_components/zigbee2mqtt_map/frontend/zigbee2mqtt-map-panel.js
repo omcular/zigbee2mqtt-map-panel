@@ -28,6 +28,10 @@ const LQ = { red: '#e5484d', orange: '#f5a623', green: '#46c36a', green2: '#22d6
 let lqScale = null;   // built once d3 is loaded
 const lqSmooth = v => (lqScale ??= d3.scaleLinear().domain([0, 50, 80, 255]).range([LQ.red, LQ.orange, LQ.green, LQ.green2]).interpolate(d3.interpolateHcl).clamp(true))(v);
 const lqColor = v => v == null || v === 0 ? LQ.grey : lqSmooth(v);
+const FOOT = `
+  <span id="scanGrp"><button id="pull" class="primary icon" title="pull a fresh map: scan the network now" aria-label="pull a fresh map"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button><span id="status"></span></span>
+  <a id="gear" href="/config/integrations/integration/zigbee2mqtt_map" data-nav title="integration settings: Zigbee2MQTT frontend URL, sidebar title, administrators only · entities, reload">⚙</a>
+`;
 const LQ_GRADIENT = `linear-gradient(to right, ${LQ.red} 0%, ${LQ.orange} ${50 / 2.55}%, ${LQ.green} ${80 / 2.55}%, ${LQ.green2} 100%)`;
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -102,7 +106,12 @@ function mergeMap(map) {
 
 const STYLE = `
   :host { display:block; height:100vh; background:var(--primary-background-color,#1c2027); color:var(--primary-text-color,#dfe3ea); font:13px/1.4 var(--paper-font-body1_-_font-family,system-ui,sans-serif); --red:#e5484d; --orange:#f5a623; --green:#46c36a; --blue:#6ea8fe; --yellow:#ffd60a; --muted:var(--secondary-text-color,#8a93a3); --panel:var(--card-background-color,#262b34); --bgc:var(--primary-background-color,#1c2027); }
-  #wrap { position:relative; height:100%; overflow:hidden; }
+  #wrap { position:relative; height:100%; overflow:hidden; display:flex; flex-direction:column; }
+  #bar, #foot { flex:none; }
+  #foot { order:3; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; padding:5px 10px; background:var(--panel); border-top:1px solid var(--divider-color,#333); }
+  #wrap.swap #bar { order:3; border-bottom:0; border-top:1px solid var(--divider-color,#333); }
+  #wrap.swap #foot { order:1; border-top:0; border-bottom:1px solid var(--divider-color,#333); }
+  #wrap.swap details.dd .menu { top:auto; bottom:calc(100% + 4px); max-height:calc(100vh - 140px); overflow:auto; }   /* controls at the bottom: menus open upwards */
   #bar { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--divider-color,#333); }
   #bar label { display:flex; gap:5px; align-items:center; white-space:nowrap; }
   #bar input[type=text] { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 6px; width:150px; }
@@ -112,7 +121,7 @@ const STYLE = `
   #bar button:hover { border-color:#888; }
   #bar button.primary { border-color:var(--primary-color,#03a9f4); color:var(--primary-color,#03a9f4); }
   #status { color:var(--muted); }
-  #scanGrp { margin-left:auto; display:flex; gap:8px; align-items:center; min-width:0; }
+  #scanGrp { flex:1; display:flex; gap:8px; align-items:center; min-width:0; }
   #bar button#pull { flex:none; padding:3px 6px; line-height:0; } #bar button#pull:disabled { opacity:.5; cursor:default; }
   #side { position:absolute; top:0; right:0; bottom:0; width:min(100%, max(440px, 46%)); display:none; flex-direction:column; background:var(--panel); border-left:1px solid var(--divider-color,#333); box-shadow:-6px 0 18px rgba(0,0,0,.35); z-index:5; }
   #side.show { display:flex; }
@@ -181,7 +190,7 @@ const STYLE = `
   #canvas > svg.rotating { cursor:grabbing; }
   #tip .big { font-size:22px; font-weight:600; line-height:1.1; margin-bottom:3px; }
   #tip .title { font-size:16px; font-weight:600; line-height:1.2; margin-bottom:2px; }
-  #canvas { position:relative; flex:1; height:calc(100% - var(--barh,44px)); }
+  #canvas { position:relative; order:2; flex:1 1 auto; min-height:0; }
   .link line.vis { stroke-linecap:round; pointer-events:none; }
   .link line.hit { stroke:transparent; stroke-width:6px; }
   .link.dim, .lql.dim { opacity:0.3; }
@@ -225,6 +234,7 @@ const BAR = `
     <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="1" step="0.05"> <span id="springV">1.0</span></label>
     <label title="push nodes off links they are not part of (and bend those links away) · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
+    <label title="the scan button and status line at the top and these controls at the bottom, within thumb reach on a phone (menus then open upwards)"><input type="checkbox" id="swapBars"> controls at the bottom</label>
     <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> drag pins nodes</label>
     <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview">reset view</button><button id="png">save PNG</button></div>
     <div class="row"><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept)">reset to defaults</button></div>
@@ -264,8 +274,6 @@ const BAR = `
     </dl>
     <p class="ver">zigbee2mqtt-map-panel v${VERSION}</p>
   </div></details>
-  <span id="scanGrp"><button id="pull" class="primary icon" title="pull a fresh map: scan the network now" aria-label="pull a fresh map"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button><span id="status"></span></span>
-  <a id="gear" href="/config/integrations/integration/zigbee2mqtt_map" data-nav title="integration settings: Zigbee2MQTT frontend URL, sidebar title, administrators only · entities, reload">⚙</a>
   <div id="stale"><span id="staleMsg"></span><button id="reload">reload</button></div>`;
 
 
@@ -340,7 +348,7 @@ class ZigbeeMapPanel extends HTMLElement {
 
   async build() {
     const r = this.shadowRoot;
-    r.innerHTML = `<style>${STYLE}</style><div id="wrap"><div id="bar">${BAR}</div><div id="canvas"><svg></svg><div id="tip"></div><div id="side"><div class="sidebar"><span id="sideTitle"></span><a id="sideExt" target="_blank" rel="noopener" title="open this page in a new tab">↗ new tab</a><button id="sideClose" title="back to the map">✕ close</button></div><iframe id="sideFrame" title="Zigbee2MQTT"></iframe></div></div></div>`;
+    r.innerHTML = `<style>${STYLE}</style><div id="wrap"><div id="bar">${BAR}</div><div id="foot">${FOOT}</div><div id="canvas"><svg></svg><div id="tip"></div><div id="side"><div class="sidebar"><span id="sideTitle"></span><a id="sideExt" target="_blank" rel="noopener" title="open this page in a new tab">↗ new tab</a><button id="sideClose" title="back to the map">✕ close</button></div><iframe id="sideFrame" title="Zigbee2MQTT"></iframe></div></div></div>`;
     const mb = r.querySelector('ha-menu-button'); mb.hass = this._hass; mb.narrow = this._narrow;
     this.$ = id => r.getElementById(id);
     this.$('pull').onclick = () => this.pull();
@@ -583,7 +591,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
       .on('tick', () => { this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
-    const PREFS = ['showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['swapBars', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
@@ -621,6 +629,10 @@ class ZigbeeMapPanel extends HTMLElement {
     $('lqilen').oninput = () => { this.lqilen = +$('lqilen').value; $('lqilenV').textContent = this.lqilen.toFixed(2).replace(/0$/, ''); lsSet(LS.lqilen, this.lqilen); this.sim.force('link').distance(dist); this.sim.alpha(0.5).restart(); };
     this.pinMode = !!lsGet(LS.pin, false); $('pinmode').checked = this.pinMode;
     $('pinmode').onchange = () => { this.pinMode = $('pinmode').checked; lsSet(LS.pin, this.pinMode); };
+    // controls at the bottom: the bars swap places; HA's sidebar button always goes into the bar at the top
+    const applySwap = () => { const on = $('swapBars').checked; this.shadowRoot.getElementById('wrap').classList.toggle('swap', on);
+      const mb = this.shadowRoot.querySelector('ha-menu-button'); (on ? $('foot') : $('bar')).prepend(mb); this.onResize(); };
+    $('swapBars').addEventListener('change', applySwap); applySwap();
     $('find').oninput = () => { this.applySel(); if ($('devs').open) this.fillDevices(); };
     $('unpin').onclick = () => { if (!this.data) return; for (const n of this.data.nodes) n.fx = n.fy = null; this.savePos(); this.sim.alpha(0.6).restart(); this.draw(); };
     $('relayout').onclick = () => this.sim.alpha(0.8).restart();
@@ -901,7 +913,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const z2m = this.z2mUrl, reg = this._reg || {};
     // Z2M 2.x route: #/device/<source index>/<ieee>, source 0 = the first (only) instance. On a fresh load the frontend
     // honours exactly this form; with a tab suffix (/info) it falls back to the device list
-    const z = !z2m ? '' : z2m.startsWith('/')
+    const z = !z2m || n.type === 'Unknown' ? '' : z2m.startsWith('/')
       ? `<a href="${esc(z2m)}" data-side="${esc(n.id)}" title="open the device in the Zigbee2MQTT add-on, here over the map">Z2M</a>`
       : `<a href="${esc(z2m)}/#/device/0/${encodeURIComponent(n.id)}" data-side="${esc(n.id)}" target="_blank" rel="noopener" title="open the device in the Zigbee2MQTT frontend, here over the map (Ctrl-click: new tab)">Z2M</a>`;
     return z + (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
