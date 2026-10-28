@@ -199,7 +199,7 @@ const STYLE = `
   #tip .big { font-size:22px; font-weight:600; line-height:1.1; margin-bottom:3px; }
   #tip .title { font-size:16px; font-weight:600; line-height:1.2; margin-bottom:2px; }
   #canvas { position:relative; order:2; flex:1 1 auto; min-height:0; }
-  .link line.vis { stroke-linecap:round; pointer-events:none; }
+  .link line.vis { stroke-linecap:butt; pointer-events:none; }
   .link path.arr { pointer-events:none; }
   .link.onpath line.vis { stroke-width:12px !important; }   /* the selected router's path to the coordinator */
   .link line.hit { stroke:transparent; stroke-width:6px; }
@@ -852,14 +852,21 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   draw() {
     // each link runs from rim to rim of its own two nodes (gap = node radius), so a link passing under a third node is not cut
+    const ro = this.routesOn(), self = this;
     this.gl.selectAll('g.link').each(function (l) {
       const s = l.source, t = l.target, dx = t.x - s.x, dy = t.y - s.y, len = Math.hypot(dx, dy) || 1, rs = s._r ?? 10, rt = t._r ?? 10;
       let x1 = s.x, y1 = s.y, x2 = t.x, y2 = t.y;
-      if (len > rs + rt + 4) { const ux = dx / len, uy = dy / len; x1 += ux * rs; y1 += uy * rs; x2 -= ux * rt; y2 -= uy * rt; } else { x2 = x1; y2 = y1; }
+      const ux = dx / len, uy = dy / len;
+      if (len > rs + rt + 4) { x1 += ux * rs; y1 += uy * rs; x2 -= ux * rt; y2 -= uy * rt; } else { x2 = x1; y2 = y1; }
+      // route arrows: scaled with the line's width, tip at the far rim, and the line stops where the arrow starts
+      const aS = ro && l.rVia?.has(l.s.id), aT = ro && l.rVia?.has(l.t.id), k = (aS || aT) ? Math.max(1, (this.classList.contains('onpath') ? 12 : self.linkWidth(l)) / 3) : 1, aLen = 9 * k, deg = Math.atan2(dy, dx) * 180 / Math.PI;
+      const tipS = [x2, y2], tipT = [x1, y1];
+      if (aS) { x2 -= ux * aLen; y2 -= uy * aLen; }
+      if (aT) { x1 += ux * aLen; y1 += uy * aLen; }
       for (const ln of this.children) {
         if (ln.tagName === 'line') { ln.setAttribute('x1', x1); ln.setAttribute('y1', y1); ln.setAttribute('x2', x2); ln.setAttribute('y2', y2); }
-        else if (ln.classList.contains('arrS')) ln.setAttribute('transform', `translate(${x2},${y2}) rotate(${Math.atan2(dy, dx) * 180 / Math.PI})`);   // s -> t: tip at t's rim
-        else if (ln.classList.contains('arrT')) ln.setAttribute('transform', `translate(${x1},${y1}) rotate(${Math.atan2(dy, dx) * 180 / Math.PI + 180})`);   // t -> s: tip at s's rim
+        else if (ln.classList.contains('arrS')) ln.setAttribute('transform', `translate(${tipS[0]},${tipS[1]}) rotate(${deg}) scale(${k})`);   // s -> t: tip at t's rim
+        else if (ln.classList.contains('arrT')) ln.setAttribute('transform', `translate(${tipT[0]},${tipT[1]}) rotate(${deg + 180}) scale(${k})`);   // t -> s: tip at s's rim
       }
     });
     this.glq.selectAll('text').attr('x', l => (l.source.x + l.target.x) / 2).attr('y', l => (l.source.y + l.target.y) / 2 - 3);
