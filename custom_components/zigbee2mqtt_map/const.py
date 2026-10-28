@@ -25,6 +25,7 @@ STORE_VERSION = 1
 
 SCAN_KIND_NORMAL = "networkmap"
 SCAN_KIND_FAST = "networkmap_fast"
+FIRST_SCAN_DELAY = 20  # s after setup with no stored map: the first scan without anyone pressing anything (Z2M may still be starting)
 SCAN_TIMEOUT = 600  # s, Zigbee2MQTT's own scan of a large mesh can take minutes
 TIMER_INTERVAL = 300  # s, how often the background schedule is checked
 SCHEDULE_SLACK = 90  # s, a scan due "every 2 h" may run this much early so a 5-min timer does not slip a whole tick

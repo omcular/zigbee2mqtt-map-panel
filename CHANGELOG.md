@@ -11,6 +11,9 @@ section and uses it as the GitHub release notes.
 - Toolbar: Min LQI is now the LQI colour bar itself (value on hover): a marker shows the setting, press or drag on the bar to change it
   (mouse and touch). The bottom legend box is gone; its notes are in the help.
 - Options: "smooth link colours" removed; link colour always runs continuously from red through orange to green.
+- Fresh install: the integration scans by itself about 20 s after setup, and the panel asks for a scan the moment it
+  learns there has never been one, so a new user sees a map without pressing anything.
+- "reset to defaults" with Shift held also forgets the cached map (exactly a first visit in this browser).
 - Options are grouped under Show, Layout, Scans and Panel.
 - Layout: the scan button and status line moved to a footer bar; option *controls at the bottom* swaps the two bars
   (status on top, controls within thumb reach on a phone; menus then open upwards).

@@ -243,7 +243,7 @@ const BAR = `
     <div id="schedNote" class="note"></div>
     <h4>Panel</h4>
     <label title="the scan button and status line at the top and these controls at the bottom, within thumb reach on a phone (menus then open upwards)"><input type="checkbox" id="swapBars"> controls at the bottom</label>
-    <div class="row"><button id="png">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept)">reset to defaults</button></div>
+    <div class="row"><button id="png">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept; Shift-click forgets it too, like a first visit)">reset to defaults</button></div>
   </div></details>
 <details id="help" class="dd"><summary>help <i class="arr"></i></summary><div class="menu">
     <h4>Mouse</h4>
@@ -464,6 +464,9 @@ class ZigbeeMapPanel extends HTMLElement {
       case 'status':
         this._status = ev; this.syncSched(); this.checkStale();
         if (ev.scanning && !this._scan) this.beginScan(ev.scanning); else if (!ev.scanning && this._scan) this.endScan();
+        // first status of this visit and the integration has never scanned (the integration also scans by itself ~20 s
+        // after a fresh install; whichever comes first wins, the other is refused as "already scanning")
+        if (!this._gotStatus) { this._gotStatus = true; if (!ev.last_request && !ev.scanning) this.pull(); }
         break;
       case 'scan_started': if (!this._scan) this.beginScan(ev.kind); break;
       case 'progress': if (this._scan) this._scan.progress = ` · ${ev.done}/${ev.total} routers${ev.failed ? `, ${ev.failed} not answering` : ''}`; break;
@@ -644,9 +647,11 @@ class ZigbeeMapPanel extends HTMLElement {
     $('relayout').onclick = () => this.sim.alpha(0.8).restart();
     $('resetview').onclick = () => { this.svg.transition().duration(300).call(this.zoom.transform, d3.zoomIdentity); };
     $('png').onclick = () => this.savePng();
-    $('resetall').onclick = () => {
+    $('resetall').onclick = e => {
       this._devSort = null;
-      for (const k of [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort, LS.hideSet]) { try { localStorage.removeItem(k); } catch (e) {} }
+      const keys = [LS.prefs, LS.spring, LS.lqilen, LS.pin, LS.pos, LS.view, LS.sel, LS.avoid, LS.devSort, LS.hideSet];
+      if (e.shiftKey) keys.push(LS.map);   // Shift: also forget the cached map, i.e. exactly a first visit in this browser
+      for (const k of keys) { try { localStorage.removeItem(k); } catch (e) {} }
       const keep = this.data ? { map: lsGet(LS.map, null) } : null;
       this.sim.stop(); clearTimeout(this._posT); this.data = null; this.selected = null; this.warm = false; this._zoomT = null;
       if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; }

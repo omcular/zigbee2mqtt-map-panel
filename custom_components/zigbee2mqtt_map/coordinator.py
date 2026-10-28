@@ -11,7 +11,7 @@ from typing import Any
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.json import json_dumps
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -27,6 +27,7 @@ from .const import (
     EVENT_STATUS,
     SCAN_KIND_FAST,
     SCAN_KIND_NORMAL,
+    FIRST_SCAN_DELAY,
     SCAN_TIMEOUT,
     SCHEDULE_SLACK,
     SETTING_BACKGROUND_HOURS,
@@ -76,6 +77,8 @@ class MapCoordinator:
             await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/{SCAN_KIND_FAST}/progress", self._on_progress)
         )
         self._unsubs.append(async_track_time_interval(self.hass, self._on_timer, timedelta(seconds=TIMER_INTERVAL)))
+        if self.map is None:
+            self._unsubs.append(async_call_later(self.hass, FIRST_SCAN_DELAY, self._first_scan))
 
     async def async_unload(self) -> None:
         """Stop listening; the store keeps the map for the next start."""
@@ -208,6 +211,11 @@ class MapCoordinator:
         if self._timeout:
             self._timeout.cancel()
             self._timeout = None
+
+    async def _first_scan(self, _now: datetime) -> None:
+        """Fresh install (nothing stored yet): fetch a first map so the panel has something to show."""
+        if self.map is None and not self.scanning:
+            await self.async_scan(source="first")
 
     async def _on_timer(self, now: datetime) -> None:
         """Background schedule: scan when the configured interval has passed since the last request from anyone."""

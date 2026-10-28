@@ -178,6 +178,21 @@ async def test_background_schedule(hass: HomeAssistant, mqtt, freezer) -> None:
     assert mqtt.async_publish.call_count == 2  # 59 min >= 1 h - 90 s slack
 
 
+async def test_first_scan_after_install(hass: HomeAssistant, mqtt, freezer) -> None:
+    """A fresh install (no stored map) scans once by itself shortly after setup."""
+    from datetime import timedelta
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    from homeassistant.util import dt as dt_util
+
+    await _setup(hass)
+    mqtt.async_publish.reset_mock()
+    freezer.tick(timedelta(seconds=25))
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert mqtt.async_publish.call_count == 1
+    assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/networkmap", '{"type":"raw","routes":false}')
+
+
 def test_version_in_sync() -> None:
     """manifest.json, const.VERSION and the panel's VERSION must agree (tools/bump_version.sh sets all three)."""
     import json
