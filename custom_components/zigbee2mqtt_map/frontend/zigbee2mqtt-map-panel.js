@@ -203,7 +203,6 @@ const STYLE = `
   .link.dim, .lql.dim { opacity:0.3; }
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
   .lql { font-size:9px; fill:var(--primary-text-color,#c7cdd8); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
-  .lql { dominant-baseline:auto; transform-box:fill-box; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
   .node.end text { font-size:9.5px; fill:var(--muted); }
   .node, .node * { cursor:pointer; }   /* a node is clicked (select) far more often than dragged */
