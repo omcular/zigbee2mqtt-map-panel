@@ -226,7 +226,7 @@ const BAR = `
       <dt><kbd>Ctrl</kbd>-drag · middle-drag</dt><dd>rotate the whole map around the centre of the view; positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
-      <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too</dd>
+      <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map, <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
       <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
       <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
@@ -341,11 +341,26 @@ class ZigbeeMapPanel extends HTMLElement {
     this.$('reload').onclick = () => location.reload();
     this.$('gear').onclick = e => { e.preventDefault(); this.navTo(this.$('gear').getAttribute('href')); };
     this.$('sideClose').onclick = () => this.closeSide();
-    // Esc closes the Zigbee2MQTT drawer, otherwise an open dropdown. Keys typed inside the drawer stay in its frame (another
-    // origin), so after clicking into it, click the map or the drawer's title bar first
-    this._onKey = e => { if (e.key !== 'Escape' || !this.isConnected) return;
-      if (this.$('side').classList.contains('show')) { this.closeSide(); e.preventDefault(); return; }
-      for (const d of dds) if (d.open) { d.open = false; e.preventDefault(); } };
+    // keys: Esc closes the Zigbee2MQTT drawer, else an open dropdown, else clears the selection · Ctrl-A selects every node
+    // on the map · Ctrl-Shift-A clears the selection. Not while typing in a field. Keys typed inside the drawer stay in its
+    // frame (another origin): click the map or the drawer's title bar first
+    this._onKey = e => {
+      if (!this.isConnected || !this.data) return;
+      const tgt = e.composedPath()[0], typing = tgt && (/^(INPUT|TEXTAREA|SELECT)$/.test(tgt.tagName) || tgt.isContentEditable);
+      if (e.key === 'Escape') {
+        if (this.$('side').classList.contains('show')) { this.closeSide(); e.preventDefault(); return; }
+        let closed = false; for (const d of dds) if (d.open) { d.open = false; closed = true; }
+        if (closed) { e.preventDefault(); return; }
+        if (typing) return;
+        if (this.sel.size) { this.selected = null; this._selOnly = true; this.render(); e.preventDefault(); }
+        return;
+      }
+      if (typing || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
+      e.preventDefault();
+      if (e.shiftKey) this.selected = null;
+      else { const shown = new Set(); this.gn.selectAll('g.node').each(d => shown.add(d)); this.sel = shown; }
+      this._selOnly = true; this.render();
+    };
     window.addEventListener('keydown', this._onKey);
     const dds = [this.$('devs'), this.$('opts'), this.$('help')];
     r.addEventListener('click', e => { for (const d of dds) if (d.open && !e.composedPath().includes(d)) d.open = false; });
