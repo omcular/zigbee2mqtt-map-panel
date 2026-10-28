@@ -111,7 +111,7 @@ const STYLE = `
   #foot { order:3; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; padding:5px 10px; background:var(--panel); border-top:1px solid var(--divider-color,#333); }
   #wrap.swap #bar { order:3; border-bottom:0; border-top:1px solid var(--divider-color,#333); }
   #wrap.swap #foot { order:1; border-top:0; border-bottom:1px solid var(--divider-color,#333); }
-  #wrap.swap details.dd .menu { top:auto; bottom:calc(100% + 4px); max-height:calc(100vh - 140px); overflow:auto; }   /* controls at the bottom: menus open upwards */
+  #wrap.swap details.dd .menu { top:auto; bottom:calc(100% + 4px); }   /* controls at the bottom: menus open upwards */
   #bar { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--divider-color,#333); }
   #bar label { display:flex; gap:5px; align-items:center; white-space:nowrap; }
   #bar input[type=text] { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 6px; width:150px; }
@@ -140,7 +140,7 @@ const STYLE = `
   details.dd summary::-webkit-details-marker { display:none; }
   details.dd summary i.arr { display:inline-block; width:0; height:0; margin-left:3px; vertical-align:middle; border:4px solid transparent; border-top:5px solid currentColor; border-bottom:0; }
   #wrap.swap details.dd summary i.arr { border-top:0; border-bottom:5px solid currentColor; }   /* menus open upwards there */
-  details.dd .menu { position:absolute; top:calc(100% + 4px); left:0; z-index:6; display:flex; flex-direction:column; gap:8px; box-sizing:border-box; min-width:min(var(--mw,250px), var(--avail,100vw)); max-width:var(--avail,100vw); padding:10px 12px; background:var(--panel); border:1px solid var(--divider-color,#444); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.4); }
+  details.dd .menu { position:absolute; top:calc(100% + 4px); left:0; z-index:6; display:flex; flex-direction:column; gap:8px; box-sizing:border-box; min-width:min(var(--mw,250px), var(--avail,100vw)); max-width:var(--avail,100vw); max-height:var(--availH,80vh); overflow:auto; padding:10px 12px; background:var(--panel); border:1px solid var(--divider-color,#444); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.4); }
   details.dd .menu .row { display:flex; gap:6px; flex-wrap:wrap; }
   details.dd .menu .sep { border-top:1px solid var(--divider-color,#444); margin:2px 0; }
   details.dd .menu .note { color:var(--muted); font-size:11px; }
@@ -156,7 +156,7 @@ const STYLE = `
   details#help h4 { margin:4px 0 0; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
-  details#devs .menu { --mw:640px; max-height:min(70vh, 640px); overflow:auto; gap:4px; }
+  details#devs .menu { --mw:640px; max-height:min(var(--availH,70vh), 640px); gap:4px; }
   details#devs td.name { white-space:normal; min-width:90px; }
 
   details#devs table { border-collapse:collapse; font-size:12px; user-select:none; }
@@ -818,7 +818,10 @@ class ZigbeeMapPanel extends HTMLElement {
     const m = d?.querySelector('.menu'); if (!m || !d.open) return;
     const host = this.getBoundingClientRect(), right = Math.min(host.right, document.documentElement.clientWidth), margin = 8;
     m.style.left = '0px'; m.style.setProperty('--avail', Math.max(160, right - host.left - 2 * margin) + 'px');
-    const r = m.getBoundingClientRect();
+    const r = m.getBoundingClientRect(), swap = this.shadowRoot.getElementById('wrap').classList.contains('swap');
+    // height: down to the panel's bottom edge, or up to its top edge when the menu opens upwards; the menu scrolls inside
+    const bottom = Math.min(host.bottom, document.documentElement.clientHeight);
+    m.style.setProperty('--availH', Math.max(120, swap ? r.bottom - host.top - margin : bottom - r.top - margin) + 'px');
     let shift = Math.max(0, r.right - (right - margin));
     shift = Math.min(shift, r.left - (host.left + margin));   // never past the panel's left edge
     m.style.left = -Math.max(0, shift) + 'px';
