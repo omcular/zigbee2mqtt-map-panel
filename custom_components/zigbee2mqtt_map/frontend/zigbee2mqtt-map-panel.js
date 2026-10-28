@@ -168,7 +168,7 @@ const STYLE = `
   #legend { position:absolute; left:10px; bottom:10px; background:var(--panel); border:1px solid var(--divider-color,#333); border-radius:6px; padding:6px 9px; font-size:11px; color:var(--muted); max-width:min(900px,calc(100% - 40px)); }
   #legend span.sw { display:inline-block; width:20px; height:3px; vertical-align:middle; margin-right:5px; }
   #legend span.grad { position:relative; display:inline-block; width:120px; height:5px; border-radius:2px; vertical-align:middle; margin:0 20px 10px 6px; }
-  #legend span.grad { cursor:pointer; }
+  #legend span.grad { cursor:pointer; touch-action:none; } #legend span.grad.drag { cursor:ew-resize; }
   #legend span.grad::before { content:''; position:absolute; left:-4px; right:-4px; top:-8px; bottom:-14px; }   /* bigger hit area */
   #legend span.grad b.mk { position:absolute; top:-8px; width:0; height:0; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid var(--primary-text-color,#fff); border-bottom:0; pointer-events:none; }
   #legend span.grad b.mk.off { display:none; }
@@ -266,7 +266,7 @@ const BAR = `
   <div id="stale"><span id="staleMsg"></span><button id="reload">reload</button></div>`;
 
 const LEGEND_TAIL = `<span class="sw" style="height:0;border-top:2px dashed #999"></span>one side only &nbsp;·&nbsp; a / b = what left hears / what right hears &nbsp;·&nbsp; see "help ▾"`;
-const legendHtml = () => `<div><span class="grad" title="click: set Min LQI here" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span>LQI &nbsp; ${LEGEND_TAIL}</div>`;
+const legendHtml = () => `<div><span class="grad" title="press or drag: set Min LQI" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span>LQI &nbsp; ${LEGEND_TAIL}</div>`;
 const LEGEND = legendHtml();
 
 // d3 force: keep nodes off links they do not belong to. A node closer than its clearance to the middle part of a foreign
@@ -588,11 +588,18 @@ class ZigbeeMapPanel extends HTMLElement {
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
     this.gn.classed('imgs', $('showImg').checked);
-    // the legend's colour bar doubles as a Min LQI slider: a marker shows the setting, a click sets it
+    // the legend's colour bar doubles as a Min LQI slider: a marker shows the setting, press or drag on the bar sets it
     this.updLegendMk = () => { const mk = $('legend').querySelector('b.mk'); if (!mk) return; const v = +$('hide').value; mk.classList.toggle('off', !(v > 0)); mk.style.left = (v / 2.55) + '%'; };
-    $('legend').addEventListener('click', e => { const g = e.target.closest?.('span.grad'); if (!g) return; const r = g.getBoundingClientRect();
-      const v = Math.max(0, Math.min(255, Math.round(((e.clientX - r.left) / r.width) * 255 / 5) * 5)); const h = $('hide');
-      h.value = v; lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); });
+    const setFromBar = (g, x) => { const r = g.getBoundingClientRect(), v = Math.max(0, Math.min(255, Math.round(((x - r.left) / r.width) * 255 / 5) * 5)), h = $('hide');
+      if (+h.value === v && lsGet(LS.hideSet, false)) return; h.value = v; lsSet(LS.hideSet, true); h.dispatchEvent(new Event('input')); };
+    $('legend').addEventListener('pointerdown', e => {
+      const g = e.target.closest?.('span.grad'); if (!g || e.button > 0) return;
+      e.preventDefault(); try { g.setPointerCapture(e.pointerId); } catch (err) {} g.classList.add('drag'); setFromBar(g, e.clientX);
+      // the value moves in steps of 5, so a full sweep re-renders at most ~50 times: no throttling needed
+      const move = ev => setFromBar(g, ev.clientX);
+      const up = () => { g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); g.removeEventListener('pointercancel', up); g.classList.remove('drag'); };
+      g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
+    });
     this.updLegendMk();
     $('hide').oninput = e => { if (e.isTrusted) lsSet(LS.hideSet, true); $('hideV').textContent = hideLabel(+$('hide').value); this.updLegendMk(); this.render(); };
     $('spring').value = this.spring; $('springV').textContent = this.spring.toFixed(1);

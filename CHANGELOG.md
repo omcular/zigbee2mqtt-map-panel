@@ -5,7 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
-- Legend: a marker on the LQI colour bar shows the Min LQI setting; clicking the bar sets it.
+- Legend: the LQI colour bar is a Min LQI slider: a marker shows the setting, press or drag on the bar to change it
+  (mouse and touch).
 - Options: "smooth link colours" removed; link colour always runs continuously from red through orange to green.
 - Toolbar: "pull fresh map" is now a download icon button right before the status text.
 - Status line: "scanned 33m ago" / "scanned 2d ago" instead of the date and time; the exact time on hover.
