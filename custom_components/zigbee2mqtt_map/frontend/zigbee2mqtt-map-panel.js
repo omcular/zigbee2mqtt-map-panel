@@ -238,7 +238,7 @@ const BAR = `
       <dt>double-click node</dt><dd>pin / unpin. Pinned nodes carry a yellow halo and keep their place across scans and reloads</dd>
       <dt>click node · click background</dt><dd>show that node with all its links, including the ones the hide slider would hide (one-sided links too if "… also on a selected node" is ticked), and fade the rest · back to normal. <kbd>Ctrl</kbd>- or <kbd>Shift</kbd>-click adds or removes nodes, in the devices list too. <kbd>Ctrl</kbd>-<kbd>A</kbd> selects every node on the map (again: none), <kbd>Esc</kbd> or <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears the selection</dd>
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
-      <dt>click / tap node: card</dt><dd>besides selecting the node, its card stays open with "Z2M" and "HA" links (as in the devices list). A click on the card, <kbd>Esc</kbd>, the background or another node closes it</dd>
+      <dt>click / tap node: card</dt><dd>besides selecting the node, its card stays open with "Z2M" and "HA" links (as in the devices list). A click on the card, <kbd>Esc</kbd>, the background or another node closes it; clicking the selected node again brings it back</dd>
       <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL (e.g. http://homeassistant:8099, the add-on's frontend port) in the integration's options, ⚙ top right. The add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose</dd>
       <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
     </dl>
@@ -357,7 +357,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.$('canvas').addEventListener('pointerdown', e => { this._lastPtr = e.pointerType; }, true);
     for (const type of ['pointerdown', 'mousedown', 'touchstart', 'click']) this.$('tip').addEventListener(type, e => {
       e.stopPropagation(); const onLink = !!e.target.closest?.('a');
-      if (onLink) { if (type === 'click') setTimeout(() => this.hideTip(), 0); return; }   // the link's own handler does the work
+      if (onLink) { if (type === 'click' && e.target.closest('a').hasAttribute('data-nav')) setTimeout(() => this.hideTip(), 0); return; }   // the link's own handler does the work; the Z2M drawer keeps the card
       if (type !== 'touchstart') e.preventDefault();
       if (type === 'click' || (!this._pinned && (type === 'pointerdown' || type === 'touchstart'))) this.hideTip();
     }, { passive: false });
@@ -696,7 +696,12 @@ class ZigbeeMapPanel extends HTMLElement {
       }))
       // single click (delayed so a double-click does not also select) toggles the neighbour view, double-click toggles the pin
       .on('click', (e, d) => { e.stopPropagation(); clearTimeout(self._clickT); const mod = e.ctrlKey || e.metaKey || e.shiftKey, pos = { clientX: e.clientX, clientY: e.clientY };
-        self._clickT = setTimeout(() => { self.clickSelect(d, { ctrlKey: mod }); if (self.sel.has(d)) self.pinTip(d, pos); else if (self._pinned === d) self.hideTip(); }, 260); })
+        self._clickT = setTimeout(() => {
+          // plain click on the selected node with its card closed (closed by a click, Esc, or the drawer): bring the card back
+          if (!mod && self.sel.size === 1 && self.sel.has(d) && self._pinned !== d) { self.pinTip(d, pos); return; }
+          self.clickSelect(d, { ctrlKey: mod });
+          if (self.sel.has(d)) self.pinTip(d, pos); else self.hideTip();   // also drops a hover preview a phone tap left behind
+        }, 260); })
       .on('dblclick', (e, d) => { e.stopPropagation(); clearTimeout(self._clickT); if (d.fx != null) { d.fx = d.fy = null; self.sim.alpha(0.3).restart(); } else { d.fx = d.x; d.fy = d.y; } self.savePos(); self.draw(); })
       .on('mouseenter', (e, d) => { if (!this._pinned) this.showTip(e, this.nodeTipHtml(d), true); })
       .on('mousemove', e => { if (!this._pinned) this.moveTip(e); }).on('mouseleave', () => { if (!this._pinned) this.hideTip(); });
