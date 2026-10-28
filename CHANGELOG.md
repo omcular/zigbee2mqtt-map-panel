@@ -7,7 +7,8 @@ section and uses it as the GitHub release notes.
 
 - Panel: **devices ▾** dropdown in the toolbar. With a node selected it lists that device and its neighbours with
   both LQI directions, otherwise every device (the "find" text filters it). Click a name to select it on the map;
-  "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend.
+  "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend, in a drawer over the
+  map (Ctrl-click for a new tab).
 - Options: *Zigbee2MQTT frontend URL* (optional) for those Z2M links; the add-on's sidebar path is accepted too and then
   opens the frontend without the device.
 - Panel: ⚙ top right opens the integration's page in Home Assistant (options, entities, reload).
