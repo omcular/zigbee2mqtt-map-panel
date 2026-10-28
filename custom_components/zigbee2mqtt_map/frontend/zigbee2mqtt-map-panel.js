@@ -680,7 +680,7 @@ class ZigbeeMapPanel extends HTMLElement {
         this._ingress = { session, url: url.replace(/\/+$/, '') };
         this._ingressT = setInterval(() => h.callApi('POST', 'hassio/ingress/validate_session', { session }).catch(() => {}), 60000);
       }
-      this.openSide(`${this._ingress.url}/#/device/0/${encodeURIComponent(n.id)}/info`, title);
+      this.openSide(`${this._ingress.url}/#/device/0/${encodeURIComponent(n.id)}`, title);
     } catch (e) { this.navTo(z2m); }
   }
   // ---- devices list: the selected node and its neighbours, or everything ----
@@ -699,26 +699,29 @@ class ZigbeeMapPanel extends HTMLElement {
     if (!this.data) { box.innerHTML = '<div class="muted">no map yet</div>'; return; }
     const sel = this.selected, reg = this._reg || {}, z2m = this.z2mUrl, q = this.$('find').value.trim().toLowerCase();
     const seen = n => n.lastSeen ? ago(Date.now() - n.lastSeen) : (n.type === 'Coordinator' ? '' : '?');
-    // Z2M 2.x routes: #/device/<source index>/<ieee>/info, source 0 = the first (only) instance
+    // Z2M 2.x route: #/device/<source index>/<ieee>, source 0 = the first (only) instance. On a fresh load the frontend
+    // honours exactly this form; with a tab suffix (/info) it falls back to the device list
     const z2mLink = n => !z2m ? '' : z2m.startsWith('/')
       ? `<a href="${esc(z2m)}" data-side="${esc(n.id)}" title="open the device in the Zigbee2MQTT add-on, here over the map">Z2M</a>`
-      : `<a href="${esc(z2m)}/#/device/0/${encodeURIComponent(n.id)}/info" data-side="${esc(n.id)}" target="_blank" rel="noopener" title="open the device in the Zigbee2MQTT frontend, here over the map (Ctrl-click: new tab)">Z2M</a>`;
+      : `<a href="${esc(z2m)}/#/device/0/${encodeURIComponent(n.id)}" data-side="${esc(n.id)}" target="_blank" rel="noopener" title="open the device in the Zigbee2MQTT frontend, here over the map (Ctrl-click: new tab)">Z2M</a>`;
     const linksFor = n => z2mLink(n) +
       (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
     const row = (n, extra = '') => `<tr data-id="${esc(n.id)}" class="${this.sel.has(n) ? 'sel' : ''}"><td class="name" title="${esc(n.id)}">${esc(n.name)}</td><td>${linksFor(n)}</td><td class="muted">${esc(n.type === 'EndDevice' ? 'end device' : n.type.toLowerCase())}</td>${extra}<td class="muted">${esc(seen(n))}</td></tr>`;
     let html;
     if (sel) {
-      const lq = v => v == null ? '–' : v;
-      html = '<table>';
-      for (const s of this.sel) {
-        const nb = [];
-        for (const l of this.data.links) { if (l.s === s) nb.push({ n: l.t, hear: l.lqS, heard: l.lqT, min: l.min }); else if (l.t === s) nb.push({ n: l.s, hear: l.lqT, heard: l.lqS, min: l.min }); }
-        nb.sort((a, b) => (b.min || 0) - (a.min || 0) || a.n.name.localeCompare(b.n.name));
-        html += `<tr class="head"><th>selected</th><th>links</th><th>type</th><th>LQI hears / is heard</th><th>last seen</th></tr>${row(s, '<td></td>')}` +
-          `<tr class="head sub"><th>neighbours (${nb.length})</th><th></th><th></th><th></th><th></th></tr>` +
-          nb.map(x => row(x.n, `<td class="lq">${lq(x.hear)} / ${lq(x.heard)}</td>`)).join('');
+      const lq = v => v == null ? '–' : v, multi = this.sel.size > 1, short = n => n.name.length > 18 ? n.name.slice(0, 17) + '…' : n.name;
+      // neighbours of every selected node, merged: one row per device, LQI per selected node it links to (named when several are selected)
+      const nb = new Map();
+      for (const s of this.sel) for (const l of this.data.links) {
+        const other = l.s === s ? l.t : l.t === s ? l.s : null; if (!other || this.sel.has(other)) continue;
+        const hear = l.s === s ? l.lqS : l.lqT, heard = l.s === s ? l.lqT : l.lqS;
+        const e = nb.get(other) ?? { n: other, best: 0, parts: [] }; e.parts.push(`${lq(hear)} / ${lq(heard)}${multi ? ` <span class="muted">${esc(short(s))}</span>` : ''}`); e.best = Math.max(e.best, l.min || 0); nb.set(other, e);
       }
-      html += '</table>';
+      const rows = [...nb.values()].sort((a, b) => b.best - a.best || a.n.name.localeCompare(b.n.name));
+      html = `<table><tr class="head"><th>selected (${this.sel.size})</th><th>links</th><th>type</th><th>LQI hears / is heard</th><th>last seen</th></tr>` +
+        [...this.sel].map(s => row(s, '<td></td>')).join('') +
+        `<tr class="head sub"><th>neighbours (${rows.length})</th><th></th><th></th><th></th><th></th></tr>` +
+        rows.map(x => row(x.n, `<td class="lq">${x.parts.join('<br>')}</td>`)).join('') + '</table>';
     } else {
       const order = n => n.type === 'Coordinator' ? 0 : n.isEnd ? 2 : 1;
       const list = this.data.nodes.filter(n => !q || n.name.toLowerCase().includes(q)).sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
