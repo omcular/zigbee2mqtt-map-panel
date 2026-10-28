@@ -720,9 +720,9 @@ class ZigbeeMapPanel extends HTMLElement {
         if (!e || min > e.best) nb.set(other, { n: other, best: min, cell: `${lq(hear)} / ${lq(heard)}${multi ? ` <span class="muted">${esc(short(s))}</span>` : ''}` });
       }
       const rows = [...nb.values()].sort((a, b) => b.best - a.best || a.n.name.localeCompare(b.n.name));
-      html = `<table><tr class="head"><th>selected (${this.sel.size})</th><th>links</th><th>type</th><th>LQI hears / is heard</th><th>last seen</th></tr>` +
+      html = `<table><tr class="head"><th>selected (${this.sel.size})</th><th>links</th><th>type</th><th></th><th>last seen</th></tr>` +
         [...this.sel].map(s => row(s, '<td></td>')).join('') +
-        `<tr class="head sub"><th>neighbours (${rows.length})</th><th></th><th></th><th></th><th></th></tr>` +
+        `<tr class="head sub"><th>neighbours (${rows.length})</th><th>links</th><th>type</th><th>LQI hears / is heard${multi ? ' · partner' : ''}</th><th>last seen</th></tr>` +
         rows.map(x => row(x.n, `<td class="lq">${x.cell}</td>`)).join('') + '</table>';
     } else {
       const order = n => n.type === 'Coordinator' ? 0 : n.isEnd ? 2 : 1;
