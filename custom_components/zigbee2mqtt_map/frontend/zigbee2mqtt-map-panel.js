@@ -385,7 +385,7 @@ class ZigbeeMapPanel extends HTMLElement {
     try { await loadD3(); } catch (e) { this.$('status').textContent = e.message; return; }
     this.initGraph();
     const cached = lsGet(LS.map, null);
-    if (cached) { this.setMap(cached.map, cached.fetchedAt); this.$('status').append(' (cached in this browser)'); }
+    if (cached) { this.setMap(cached.map, cached.fetchedAt); }
     else this.$('status').textContent = 'no map yet, press "pull fresh map"';
     this.watchStore();
     new ResizeObserver(() => this.onResize()).observe(this.$('canvas'));
