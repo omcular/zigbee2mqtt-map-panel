@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- Ghost devices (addresses in neighbour tables that Zigbee2MQTT does not know) are hidden by default, option
+  "hide ghost devices"; their card names the routers still holding them.
 - Min LQI filters router links only; end-device links stay whatever the threshold (they are one-sided by nature and
   often 40–60, so a "connected" view used to cut dozens of healthy sensors loose).
 - Devices without a visible link are docked in rows along the bottom of the screen, whatever the zoom, pan or rotation,

@@ -228,6 +228,7 @@ const BAR = `
     <h4>Show</h4>
     <div class="grp">
     <label><input type="checkbox" id="showEnd"> end devices</label>
+    <label title="a ghost is an address in some router's neighbour table that is not in Zigbee2MQTT's device list: a removed device whose entries have not aged out. The devices list still shows them"><input type="checkbox" id="hideGhosts" checked> hide ghost devices</label>
     <label><input type="checkbox" id="showOne"> one-sided / stale links</label>
     <label title="when a node is selected, also reveal its one-sided (dashed) links; links hidden by the hide slider are always revealed"><input type="checkbox" id="selOne"> one-sided / stale on selected node</label>
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
@@ -280,6 +281,7 @@ const BAR = `
       <dt>dashed grey</dt><dd>only one side reported the link, or reported 0: usually a stale neighbour-table entry (hidden unless "one-sided / stale links" is on)</dd>
       <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI contrast" in options sets how much; "spacing" scales all distances)</dd>
+      <dt>ghosts</dt><dd>an address in a router's neighbour table that Zigbee2MQTT does not know: a removed device whose entries have not aged out (always LQI 0). Hidden by default ("hide ghost devices" in options); the devices list keeps them, with the routers that still hold them on the card</dd>
       <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "show device images" in options puts the zigbee2mqtt.io photo on each node, "node size" scales them, pictures or not (needs internet; the PNG export leaves them out)</dd>
       <dt>what a link is</dt><dd>an entry in a router's neighbour table, not a live route. These tables hold ~16 entries and age in and out, so links come and go between scans; judge a path over several scans</dd>
     </dl>
@@ -624,7 +626,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
       .on('tick', () => { this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
-    const PREFS = ['swapBars', 'showRoutes', 'hoverTips', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['swapBars', 'showRoutes', 'hoverTips', 'hideGhosts', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
@@ -634,7 +636,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); this.draw(); };
     const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
-    $('showEnd').onchange = () => this.render();
+    $('showEnd').onchange = () => this.render(); $('hideGhosts').onchange = () => this.render();
     const routesLabel = () => { const v = +$('showRoutes').value; $('showRoutesV').textContent = v > 0 ? v.toFixed(1) : 'off'; };
     $('showRoutes').oninput = () => { routesLabel(); this.render(); }; routesLabel(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => { this.glq.selectAll('g.lql').style('display', $('showLql').checked ? null : 'none'); this.sizeLabels(); };
@@ -698,7 +700,8 @@ class ZigbeeMapPanel extends HTMLElement {
   saveView() { if (this._zoomT) lsSet(LS.view, { k: this._zoomT.k, x: this._zoomT.x, y: this._zoomT.y }); }
   visible() {
     const $ = this.$, se = $('showEnd').checked, so = $('showOne').checked, sr = $('selOne').checked, ss = $('showSib').checked, hv = +$('hide').value;
-    const nodes = this.data.nodes.filter(n => se || !n.isEnd);
+    const hg = $('hideGhosts').checked;
+    const nodes = this.data.nodes.filter(n => (se || !n.isEnd) && !(hg && n.type === 'Unknown'));
     const vis = new Set(nodes.map(n => n.id));
     const sel = this.selected;
     const links = [];
