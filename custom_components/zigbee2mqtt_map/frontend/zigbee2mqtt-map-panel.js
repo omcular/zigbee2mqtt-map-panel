@@ -238,10 +238,10 @@ const BAR = `
     <label title="draw what the routing tables say: links that carry active routes thicker (the more routes, the thicker) with an arrow at the end the traffic goes to; a selected router shows its path to the coordinator extra thick. 0: off · higher: thickness grows faster with the number of routes. Needs a scan with &quot;routes on pull&quot;">routes <input type="range" id="showRoutes" min="0" max="3" value="0" step="0.1"> <span id="showRoutesV">off</span></label>
     <div id="routesNote" class="note"></div>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg" checked> device images</label>
-    <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds)">node size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
     </div>
     <h4>Layout</h4>
     <div class="grp">
+    <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds)">node size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
     <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="0.5" step="0.05"> <span id="springV">0.5</span></label>
     <label title="push nodes off links they are not part of (and bend those links away) · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
