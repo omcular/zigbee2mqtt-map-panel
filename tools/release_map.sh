@@ -88,13 +88,19 @@ if [ $DRY = 1 ]; then echo "  (dry) would wait for the runs of this commit to fi
   done; echo
   printf '%s\n' "$runs" | sed 's/^/  /'
   if printf '%s\n' "$runs" | grep -qv $'\tcompleted\tsuccess$'; then
-    echo "  not all green: $url" >&2; echo "  fix, commit, push, then create the release by hand: gh release create v$v --generate-notes --title v$v" >&2; exit 1
+    echo "  not all green: $url" >&2; echo "  fix, commit, push, then create the release by hand (with the zip asset, see below in this script): gh release create v$v --generate-notes --title v$v <zip>" >&2; exit 1
   fi
   echo "  all green"
 fi
 
 say "release v$v"
+# HACS downloads the integration as a zip release asset (hacs.json: zip_release + filename); GitHub counts those downloads
+# per release, which is the only reliable install count. The zip holds the integration directory's content at its root.
+zipdir=$(mktemp -d); zipfile="$zipdir/zigbee2mqtt_map.zip"
+if [ $DRY = 1 ]; then echo "  (dry) zip custom_components/zigbee2mqtt_map -> $zipfile"
+else (cd custom_components/zigbee2mqtt_map && zip -q -r "$zipfile" . -x '__pycache__/*' '*.pyc' '.*') && echo "  asset: $(du -h "$zipfile" | cut -f1) zigbee2mqtt_map.zip ($(unzip -l "$zipfile" | tail -1 | awk '{print $2}') files)"; fi
 confirm "create the GitHub release v$v (tag + notes)?" || exit 1
-if [ -n "$notes" ]; then run gh release create "v$v" --generate-notes --title "v$v" --notes "$notes"; else run gh release create "v$v" --generate-notes --title "v$v"; fi
+if [ -n "$notes" ]; then run gh release create "v$v" --generate-notes --title "v$v" --notes "$notes" "$zipfile"; else run gh release create "v$v" --generate-notes --title "v$v" "$zipfile"; fi
+rm -rf "$zipdir"
 [ $DRY = 1 ] || echo "  https://github.com/$repo/releases/tag/v$v"
 echo "  HACS shows it after its next refresh; 'Update information' on the repository page fetches it now."

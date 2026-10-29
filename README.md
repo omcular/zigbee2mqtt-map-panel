@@ -119,7 +119,8 @@ only slower.
 - Tests: `pip install pytest-homeassistant-custom-component home-assistant-frontend`, then `pytest` from the repo root.
 - `tools/dev_deploy.sh`: copies the working copy to a Home Assistant host over SSH (`HA_HOST=root@homeassistant`)
   and restarts Core. Do not combine with a HACS download of the integration on that host, both write the same folder.
-- `tools/release_map.sh 2.0.1`: version bump, tests, commit, push, wait for the workflows, GitHub release.
+- `tools/release_map.sh 2.1.0`: version bump, CHANGELOG section, tests, commit, push, wait for the workflows, GitHub
+  release with the integration zipped as the asset HACS downloads (hacs.json `zip_release`).
 - `tools/render_icon.sh`: renders `brand/icon.svg` to the PNG sizes HACS and Home Assistant use.
 
 ## Credits
