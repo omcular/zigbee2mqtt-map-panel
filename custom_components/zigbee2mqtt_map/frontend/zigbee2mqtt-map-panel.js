@@ -1061,7 +1061,14 @@ class ZigbeeMapPanel extends HTMLElement {
     this.wireLinks(box, () => { this.$('devs').open = false; });
   }
   nodeTipHtml(d) {
-    return `<div class="title">${esc(d.name)}</div>` + esc(`${d.type}${d.vendor ? ` · ${d.vendor} ${d.model}` : ''}${d.desc ? `\n${d.desc}` : ''}\nIEEE ${d.id}${d.nwk != null ? `  nwk ${d.nwk}` : ''}${d.lastSeen ? `\n${d.type === 'Coordinator' ? 'Zigbee2MQTT running since' : 'last seen'} ${new Date(d.lastSeen).toLocaleString()}` : ''}\nlinks: ${this.data.links.filter(l => l.s === d || l.t === d).length}`) + this.pathHomeHtml(d);
+    return `<div class="title">${esc(d.name)}</div>` + esc(`${d.type}${d.vendor ? ` · ${d.vendor} ${d.model}` : ''}${d.desc ? `\n${d.desc}` : ''}\nIEEE ${d.id}${d.nwk != null ? `  nwk ${d.nwk}` : ''}${d.lastSeen ? `\n${d.type === 'Coordinator' ? 'Zigbee2MQTT running since' : 'last seen'} ${new Date(d.lastSeen).toLocaleString()}` : ''}\nlinks: ${this.data.links.filter(l => l.s === d || l.t === d).length}`) + this.ghostHtml(d) + this.pathHomeHtml(d);
+  }
+  // a node that is in somebody's neighbour table but not in Zigbee2MQTT's device list: a device that left or was removed;
+  // the entries stay until the routers holding them rebuild their tables (Tuya devices keep the parent they joined through for good)
+  ghostHtml(d) {
+    if (d.type !== 'Unknown') return '';
+    const holders = this.data.links.filter(l => l.s === d || l.t === d).map(l => { const o = l.s === d ? l.t : l.s, lq = l.s === d ? l.lqT : l.lqS, rel = l.s === d ? l.relT : l.relS; return `${esc(o.name)} (${lq ?? '–'}${rel === 0 ? ', as its parent' : rel === 1 ? ', as its child' : ''})`; });
+    return `<div class="path"><span class="muted">not in the device list: a removed device that is still in the neighbour table of</span> ${holders.join(', ')}<br><span class="muted">LQI 0 = nobody hears it. The entries go away when those routers rebuild their tables, usually after a power cycle</span></div>`;
   }
   pathHomeHtml(d) {
     if (d.type !== 'Router') return '';
