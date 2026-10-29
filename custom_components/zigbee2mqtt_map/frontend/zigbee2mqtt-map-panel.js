@@ -290,7 +290,7 @@ const BAR = `
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
       <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "pull routes" also reads routing tables (slower, much slower on the first pull). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
-      <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only links whose weaker direction is above the chosen LQI (the white marker); far left shows all. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
+      <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Devices left without a visible link are lined up along the bottom of the screen. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
@@ -579,7 +579,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.svg = d3.select($('canvas').querySelector(':scope > svg')); this.tip = d3.select($('tip'));
     this.g = this.svg.append('g'); this.gl = this.g.append('g'); this.glq = this.g.append('g'); this.gn = this.g.append('g');
     // Ctrl is excluded on purpose: Ctrl-wheel stays browser zoom, Ctrl-drag rotates (below); middle button rotates too
-    this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { this._zoomT = e.transform; this.g.attr('transform', e.transform); }).on('end', () => this.saveView()).filter(e => (e.type === 'wheel' || !e.target.closest?.('.node')) && !e.button && !e.ctrlKey);   // nodes are for dragging, but the wheel zooms everywhere
+    this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { this._zoomT = e.transform; this.g.attr('transform', e.transform); this.dockParked(); this.draw(); }).on('end', () => this.saveView()).filter(e => (e.type === 'wheel' || !e.target.closest?.('.node')) && !e.button && !e.ctrlKey);   // nodes are for dragging, but the wheel zooms everywhere
     this.svg.call(this.zoom);
     const svgEl = this.svg.node();
     svgEl.addEventListener('mousedown', e => {
@@ -693,7 +693,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.draw();
   }
   // graph state: every node's last position (pinned ones flagged) + the zoom/pan view, so a revisit starts where you left off
-  savePos() { const o = {}; if (this.data) for (const n of this.data.nodes) if (n.x != null) o[n.id] = [Math.round(n.x), Math.round(n.y), n.fx != null ? 1 : 0]; lsSet(LS.pos, o); }
+  savePos() { const o = {}; if (this.data) for (const n of this.data.nodes) if (n.x != null && !n._parked) o[n.id] = [Math.round(n.x), Math.round(n.y), n.fx != null ? 1 : 0]; lsSet(LS.pos, o); }
   savePosSoon() { clearTimeout(this._posT); this._posT = setTimeout(() => this.savePos(), 1500); }
   saveView() { if (this._zoomT) lsSet(LS.view, { k: this._zoomT.k, x: this._zoomT.x, y: this._zoomT.y }); }
   visible() {
@@ -704,7 +704,8 @@ class ZigbeeMapPanel extends HTMLElement {
     const links = [];
     for (const l of this.data.links) {
       if (!vis.has(l.s.id) || !vis.has(l.t.id)) continue;
-      const normal = (so || !l.oneSided) && (ss || !l.sibling) && (l.oneSided || hideOk(l.min, hv));
+      // Min LQI is a statement about the router mesh: end-device links (one direction by nature, often 40-60) are not filtered
+      const normal = (so || !l.oneSided) && (ss || !l.sibling) && (l.oneSided || l.endLink || hideOk(l.min, hv));
       l.revealed = !normal && !!sel && this.touchesSel(l) && (so || sr || !l.oneSided);   // shown only because of the selection: drawn, but no force
       if (normal || l.revealed) links.push(l);
     }
@@ -827,17 +828,31 @@ class ZigbeeMapPanel extends HTMLElement {
     const f = S0 / 30;
     this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18 * f, on ? S0 * 0.33 + 10 : 0) : Math.max(42 * f, on ? S0 / 2 + 14 : 0));
   }
-  // weak gravity toward the canvas centre so nodes that lose all visible links do not fly off. Nodes WITHOUT any visible
-  // link are parked in a strip near the bottom instead: at the centre they sit on top of other nodes' links and look connected
+  // weak gravity toward the canvas centre so nodes that lose all visible links do not fly off; nodes WITHOUT any visible
+  // link take no part in the layout at all, they are docked at the bottom of the screen (dockParked)
   applyGravity() {
     if (!this.sim || !this._deg || !this.data) return;
     const cv = this.$('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2, deg = this._deg, iso = d => !deg[d.id];
-    // the strip sits below the lowest linked node (graph coordinates: the layout is usually larger than the canvas)
-    const linked = this.sim.nodes().filter(d => !iso(d) && d.y != null);
-    const parkY = linked.length ? Math.max(...linked.map(d => d.y)) + 110 : cy + cv.clientHeight * 0.42;
-    const parkX = linked.length ? linked.reduce((a, d) => a + d.x, 0) / linked.length : cx;
-    this.sim.force('x', d3.forceX(d => iso(d) ? parkX : cx).strength(d => iso(d) ? 0.05 : 0.03))
-      .force('y', d3.forceY(d => iso(d) ? parkY : cy).strength(d => iso(d) ? 0.25 : 0.03));
+    this.sim.force('x', d3.forceX(cx).strength(d => iso(d) ? 0 : 0.03)).force('y', d3.forceY(cy).strength(d => iso(d) ? 0 : 0.03));
+    this.dockParked();
+  }
+  // nodes without any visible link are docked in rows along the bottom of the SCREEN (not of the graph), whatever the zoom,
+  // pan or rotation: they are not part of the layout, they are a list. Their fx/fy are set from screen coordinates every
+  // time the view changes; a node that gains a link again is released (unless the user had pinned it)
+  dockParked() {
+    if (!this.sim || !this._deg || !this.data) return;
+    const cv = this.$('canvas'), W = cv.clientWidth, H = cv.clientHeight, deg = this._deg;
+    const parked = this.sim.nodes().filter(d => !deg[d.id]).sort((a, b) => Number(a.isEnd) - Number(b.isEnd) || a.name.localeCompare(b.name));
+    const t = this._zoomT || d3.zoomIdentity;
+    const perRow = Math.max(1, Math.floor((W - 24) / 64)), rows = Math.ceil(parked.length / perRow);
+    parked.forEach((d, i) => {
+      const row = Math.floor(i / perRow), n = Math.min(perRow, parked.length - row * perRow), col = i - row * perRow;
+      const sx = 12 + (col + 0.5) * ((W - 24) / n), sy = H - 48 - (rows - 1 - row) * 48;   // last row at the bottom, room for the label below the node
+      const [gx, gy] = t.invert([sx, sy]);
+      if (!d._parked) { d._parked = true; d._userPinned = d.fx != null; }
+      d.fx = d.x = gx; d.fy = d.y = gy; d.vx = d.vy = 0;
+    });
+    for (const d of this.sim.nodes()) if (d._parked && deg[d.id]) { d._parked = false; if (!d._userPinned) d.fx = d.fy = null; }
   }
   // constant width: colour alone carries the LQI; one-sided links are hairlines
   // routes overlay: links carrying active routes get thicker, the more routes the thicker; the rest keep their width
@@ -929,7 +944,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.glq.selectAll('g.lql').style('visibility', l => l._lroom === false ? 'hidden' : null).attr('transform', l => { const dx = l.target.x - l.source.x, dy = l.target.y - l.source.y; let a = Math.atan2(dy, dx) * 180 / Math.PI; if (a > 90 || a < -90) a += 180;   // never upside down
       const t = l._lt ?? 0.5; return `translate(${l.source.x + dx * t},${l.source.y + dy * t}) rotate(${a}) scale(${l._lf || 1})`; })
       .select('text').text(l => l.source.x <= l.target.x ? `${fmt(l.lqS)} / ${fmt(l.lqT)}` : `${fmt(l.lqT)} / ${fmt(l.lqS)}`);
-    this.gn.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`).classed('pinned', d => d.fx != null);
+    this.gn.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`).classed('pinned', d => d.fx != null && !d._parked);
   }
   applySel() {
     if (!this.data) return;

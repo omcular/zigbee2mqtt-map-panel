@@ -5,6 +5,10 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- Min LQI filters router links only; end-device links stay whatever the threshold (they are one-sided by nature and
+  often 40–60, so a "connected" view used to cut dozens of healthy sensors loose).
+- Devices without a visible link are docked in rows along the bottom of the screen, whatever the zoom, pan or rotation,
+  instead of being parked somewhere in the graph.
 - New defaults: device images on, spacing 0.5, names for routers only.
 - LQI labels run along their link, just above it; the left value is what the left-hand node hears.
 - "save PNG" works again (the exported SVG carried the xmlns attribute twice and never loaded).
