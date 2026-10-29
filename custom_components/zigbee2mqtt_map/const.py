@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "zigbee2mqtt_map"
-VERSION = "2.0.1"
+VERSION = "2.1.0"
 
 CONF_BASE_TOPIC = "base_topic"
 CONF_SIDEBAR_TITLE = "sidebar_title"

@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+## 2.1.0 – 2026-10-29
+
 - Releases carry the integration as a zip asset, which is what HACS downloads from now on (install counts per release).
 - Ghost devices (addresses in neighbour tables that Zigbee2MQTT does not know) are hidden unless the option
   "show ghost devices" is on; their card names the routers still holding them.

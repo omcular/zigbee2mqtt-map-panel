@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/omcular/zigbee2mqtt-map-panel/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "2.0.1"
+  "version": "2.1.0"
 }
