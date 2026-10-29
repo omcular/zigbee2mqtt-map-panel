@@ -466,7 +466,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const last = Math.max(this.lastRequestMs(), this.data ? (Date.parse(this.data.fetchedAt) || 0) : 0);
     if (Date.now() - last >= live * 60000) this.pull();
   }
-  onResize() { const bar = this.$('bar'); if (bar) { const h = bar.offsetHeight + 'px'; if (this._barh !== h) { this._barh = h; this.style.setProperty('--barh', h); } } if (this.sim && this.data) { const c = this.$('canvas'), cx = c.clientWidth / 2, cy = c.clientHeight / 2; this.sim.force('center', d3.forceCenter(cx, cy)); this.applyGravity(); } }
+  onResize() { const bar = this.$('bar'); if (bar) { const h = bar.offsetHeight + 'px'; if (this._barh !== h) { this._barh = h; this.style.setProperty('--barh', h); } } if (this.sim && this.data) { const c = this.$('canvas'), cx = c.clientWidth / 2, cy = c.clientHeight / 2; this.sim.force('center', d3.forceCenter(cx, cy)); this.applyGravity(); this.draw(); } }
 
   // live link to the integration: a status event first, then the stored map, then every new map, progress count and error
   async watchStore() {
@@ -685,7 +685,7 @@ class ZigbeeMapPanel extends HTMLElement {
   rotateAll(da, [ox, oy]) {
     const c = Math.cos(da), s = Math.sin(da);
     for (const n of this.data.nodes) {
-      if (n.x == null) continue;
+      if (n.x == null || n._parked) continue;   // docked nodes are anchored to the screen, not to the graph
       const dx = n.x - ox, dy = n.y - oy; n.x = ox + dx * c - dy * s; n.y = oy + dx * s + dy * c;
       if (n.fx != null) { const fx = n.fx - ox, fy = n.fy - oy; n.fx = ox + fx * c - fy * s; n.fy = oy + fx * s + fy * c; }
       if (n.vx) { const vx = n.vx, vy = n.vy || 0; n.vx = vx * c - vy * s; n.vy = vx * s + vy * c; }
