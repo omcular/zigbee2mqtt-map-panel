@@ -233,11 +233,11 @@ const BAR = `
     <label title="when a node is selected, also reveal its one-sided (dashed) links; links hidden by the hide slider are always revealed"><input type="checkbox" id="selOne"> one-sided / stale on selected node</label>
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
     <label>show names for <select id="names"><option value="none">none</option><option value="routers" selected>routers only</option><option value="all">all devices</option></select></label>
-    <label><input type="checkbox" id="showLql"> show LQI labels</label>
+    <label><input type="checkbox" id="showLql"> LQI labels</label>
     <label title="the info box that appears while the mouse rests on a node or a link; off: only the card a click opens"><input type="checkbox" id="hoverTips" checked> hover popups</label>
     <label title="draw what the routing tables say: links that carry active routes thicker (the more routes, the thicker) with an arrow at the end the traffic goes to; a selected router shows its path to the coordinator extra thick. 0: off · higher: thickness grows faster with the number of routes. Needs a scan with &quot;routes on pull&quot;">routes <input type="range" id="showRoutes" min="0" max="3" value="0" step="0.1"> <span id="showRoutesV">off</span></label>
     <div id="routesNote" class="note"></div>
-    <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg" checked> show device images</label>
+    <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg" checked> device images</label>
     <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds)">node size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
     </div>
     <h4>Layout</h4>
@@ -282,7 +282,7 @@ const BAR = `
       <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI contrast" in options sets how much; "spacing" scales all distances)</dd>
       <dt>ghosts</dt><dd>an address in a router's neighbour table that Zigbee2MQTT does not know: a removed device whose entries have not aged out (always LQI 0). Hidden unless "show ghost devices" is on in options; the devices list keeps them, with the routers that still hold them on the card</dd>
-      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "show device images" in options puts the zigbee2mqtt.io photo on each node, "node size" scales them, pictures or not (needs internet; the PNG export leaves them out)</dd>
+      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "device images" in options puts the zigbee2mqtt.io photo on each node, "node size" scales them, pictures or not (needs internet; the PNG export leaves them out)</dd>
       <dt>what a link is</dt><dd>an entry in a router's neighbour table, not a live route. These tables hold ~16 entries and age in and out, so links come and go between scans; judge a path over several scans</dd>
     </dl>
     <h4>Data</h4>
