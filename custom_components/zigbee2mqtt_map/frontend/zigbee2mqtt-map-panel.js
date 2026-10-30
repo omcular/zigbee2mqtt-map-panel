@@ -31,7 +31,7 @@ let lqScale = null;   // built once d3 is loaded
 const lqSmooth = v => (lqScale ??= d3.scaleLinear().domain([0, 50, 80, 255]).range([LQ.red, LQ.orange, LQ.green, LQ.green2]).interpolate(d3.interpolateHcl).clamp(true))(v);
 const lqColor = v => v == null || v === 0 ? LQ.grey : lqSmooth(v);
 const FOOT = `
-  <span id="scanGrp"><button id="pull" class="primary icon" title="pull a fresh map: scan the network now" aria-label="pull a fresh map"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button><span id="status"></span><span id="feed"></span></span>
+  <span id="scanGrp"><button id="pull" class="primary icon" title="pull a fresh map: scan the network now" aria-label="pull a fresh map"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button><span id="status"></span></span>
   <a id="gear" href="/config/integrations/integration/zigbee2mqtt_map" data-nav title="integration settings: Zigbee2MQTT frontend URL, sidebar title, administrators only · entities, reload">⚙</a>
 `;
 const LQ_GRADIENT = `linear-gradient(to right, ${LQ.red} 0%, ${LQ.orange} ${50 / 2.55}%, ${LQ.green} ${80 / 2.55}%, ${LQ.green2} 100%)`;
@@ -178,7 +178,8 @@ const STYLE = `
   .link.removed line.vis, .link.removed path.arr, .lql.removed { filter:grayscale(1); opacity:.45; }
   details#devs tr.removed td { color:var(--muted); } details#devs tr.removed td.name { text-decoration:line-through; }
   #bar button#join.open { font-variant-numeric:tabular-nums; } #bar button#join:disabled { opacity:.6; cursor:default; }
-  #feed { color:var(--primary-text-color,#dfe3ea); } #feed:empty { display:none; } #feed.bad { color:var(--orange); }
+  #toast { position:absolute; top:10px; left:50%; transform:translateX(-50%); max-width:min(90%, 420px); box-sizing:border-box; background:var(--panel); color:var(--primary-text-color,#dfe3ea); border:1px solid var(--primary-color,#03a9f4); border-radius:8px; padding:6px 12px; font-size:13px; box-shadow:0 4px 14px #0008; z-index:7; pointer-events:none; opacity:0; transition:opacity .25s; }
+  #toast.show { opacity:1; } #toast.bad { border-color:var(--orange); color:var(--orange); }   /* the pairing feed: joined → interviewing → paired */
   .lql { pointer-events:none; }
   .lql text { font-size:9px; font-weight:600; fill:#10131a; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
@@ -274,7 +275,7 @@ const BAR = `
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Devices left without a visible link are lined up along the bottom of the screen. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown; "also here" opens that router too (each router keeps its own 254 s; the button lists every running countdown, soonest first); a dot circles every node the network is open through, "stop" closes the network everywhere. A join opened from the Zigbee2MQTT frontend shows without the router names. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
-      <dt>pairing feed</dt><dd>next to the scan status: joined → interviewing → paired (or failed) → the device appears on the map at once (parked at the edge until a scan wires it) and is selected, so its card offers the Z2M link for naming it; renames and removals in Zigbee2MQTT reach the map the same way, without a scan</dd>
+      <dt>pairing feed</dt><dd>a bubble over the map: joined → interviewing → paired (or failed) → the device appears on the map at once (parked at the edge until a scan wires it) and is selected, so its card offers the Z2M link for naming it; renames and removals in Zigbee2MQTT reach the map the same way, without a scan</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
     <p class="ver">zigbee2mqtt-map-panel v${VERSION}</p>
@@ -354,7 +355,7 @@ class ZigbeeMapPanel extends HTMLElement {
 
   async build() {
     const r = this.shadowRoot;
-    r.innerHTML = `<style>${STYLE}</style><div id="wrap"><div id="bar">${BAR}</div><div id="foot">${FOOT}</div><div id="canvas"><svg></svg><div id="tip"></div><div id="side"><div class="sidebar"><span id="sideTitle"></span><a id="sideExt" target="_blank" rel="noopener" title="open this page in a new tab">↗ new tab</a><button id="sideClose" title="back to the map">✕ close</button></div><iframe id="sideFrame" title="Zigbee2MQTT"></iframe></div></div></div>`;
+    r.innerHTML = `<style>${STYLE}</style><div id="wrap"><div id="bar">${BAR}</div><div id="foot">${FOOT}</div><div id="canvas"><svg></svg><div id="tip"></div><div id="toast"></div><div id="side"><div class="sidebar"><span id="sideTitle"></span><a id="sideExt" target="_blank" rel="noopener" title="open this page in a new tab">↗ new tab</a><button id="sideClose" title="back to the map">✕ close</button></div><iframe id="sideFrame" title="Zigbee2MQTT"></iframe></div></div></div>`;
     const mb = r.querySelector('ha-menu-button'); mb.hass = this._hass; mb.narrow = this._narrow;
     this.$ = id => r.getElementById(id);
     this.$('pull').onclick = () => this.pull();
@@ -479,6 +480,7 @@ class ZigbeeMapPanel extends HTMLElement {
         this.endScan();
         lsSet(LS.map, { fetchedAt: ev.fetchedAt, updatedAt: ev.updatedAt, map: ev.map, mesh: ev.mesh ?? null });
         this.setMap(ev.map, ev.fetchedAt, key, ev.mesh ?? null);
+        if (this._pinned) { const n = this.data.byId[this._pinned.id]; if (n) { this._pinned = n; this._refill?.(); } else this.hideTip(); }   // the open card follows a rename, closes on removal
         if (ev.duration) st.append(` · scan took ${ev.duration} s`);   // append, not textContent +=: that would flatten the clickable mesh numbers into plain text
         break;
       }
@@ -559,10 +561,10 @@ class ZigbeeMapPanel extends HTMLElement {
     }
   }
   feed(text, bad = false, ttl = 15000) {
-    const f = this.$?.('feed'); if (!f) return;
-    f.textContent = text; f.classList.toggle('bad', bad);
+    const f = this.$?.('toast'); if (!f) return;
+    f.textContent = text; f.classList.toggle('bad', bad); f.classList.add('show');
     clearTimeout(this._feedT); this._feedT = null;
-    if (ttl) this._feedT = setTimeout(() => { if (f.textContent === text) f.textContent = ''; }, ttl);
+    if (ttl) this._feedT = setTimeout(() => { if (f.textContent === text) f.classList.remove('show'); }, ttl);
   }
 
   // ask the integration for a scan; the result, progress and errors arrive as events on the subscription
@@ -1178,10 +1180,11 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   // click / tap on a node: its card stays until clicked, Esc, a click on the background or another node; it carries the links
   pinTip(d, e) {
-    const fill = () => { this.showTip(e, this.nodeTipHtml(d) + `<div class="tiplinks">${this.devLinks(d) || '<span class="muted">no links (set the Zigbee2MQTT URL in the options, ⚙)</span>'}</div>${this.joinLink(d) ? `<div class="tiplinks tipjoin">${this.joinLink(d)}</div>` : ''}<div class="tiphint">click to close</div>`, true);
+    const fill = () => { const n = this._pinned; if (!n) return;   // re-pointed by a map event when the node is renamed
+      this.showTip(e, this.nodeTipHtml(n) + `<div class="tiplinks">${this.devLinks(n) || '<span class="muted">no links (set the Zigbee2MQTT URL in the options, ⚙)</span>'}</div>${this.joinLink(n) ? `<div class="tiplinks tipjoin">${this.joinLink(n)}</div>` : ''}<div class="tiphint">click to close</div>`, true);
       this.tip.classed('pinned', true); this.wireLinks(this.tip.node()); };
     this._pinned = d; this._refill = fill; fill();
-    if (!this._reg) this.loadRegistry().then(() => { if (this._pinned === d) fill(); });
+    if (!this._reg) this.loadRegistry().then(() => { if (this._pinned?.id === d.id) fill(); });
   }
   showTip(e, text, html = false) { const t = this.tip.style('display', 'block').classed('touch', this._lastPtr === 'touch'); if (html) t.html(text); else t.text(text); this.moveTip(e); }
   // tooltip next to the pointer, flipped to the other side when it would leave the canvas, and never outside it (phones)

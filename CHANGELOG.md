@@ -6,6 +6,7 @@ section and uses it as the GitHub release notes.
 ## Unreleased
 
 - Mesh-health sensors: "Mesh connected at LQI" and "Mesh redundant at LQI", computed by the integration after every scan (one implementation, the panel shows the same values), with the bottleneck, the single point of failure and the cut-off routers as attributes. A history graph of them is the mesh over time.
+- The pairing feed is a bubble over the map instead of a line in the footer (which squeezed the status text on a phone); an open device card follows a rename and closes when the device is removed.
 - The join indicator (the dot circling a node) skips routers that joined after a broadcast permit join started, since the broadcast never reached them.
 - Permit join from the map: a toolbar button opens the network for 254 s with a countdown (click again to close), a router's card offers "permit join here", and a pairing feed next to the scan status follows the newcomer: joined → interviewing → paired or failed. Administrators only.
 - The map follows Zigbee2MQTT's device list without a scan: a renamed device gets its new name, a joined device appears at once (parked at the edge until a scan shows its links, selected after a successful interview), a removed device stays in grey with its links until the next scan.
