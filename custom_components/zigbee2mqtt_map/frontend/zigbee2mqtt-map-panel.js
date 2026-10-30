@@ -187,7 +187,7 @@ const STYLE = `
   #lq span.grad i { position:absolute; top:6px; transform:translateX(-50%); font-style:normal; font-size:9px; color:var(--muted); }
   #tip.touch, #tip.pinned { pointer-events:auto; }
   #tip.pinned { cursor:pointer; border-color:var(--primary-color,#03a9f4); }
-  #tip .tiplinks { margin-top:6px; display:flex; gap:12px; } #tip .tiplinks a { color:var(--primary-color,#03a9f4); text-decoration:none; font-weight:600; cursor:pointer; }
+  #tip .tiplinks { margin-top:6px; display:flex; flex-wrap:wrap; gap:4px 12px; } #tip .tipjoin { margin-top:4px; } #tip .tiplinks a { white-space:nowrap; } #tip .tiplinks a { color:var(--primary-color,#03a9f4); text-decoration:none; font-weight:600; cursor:pointer; }
   #tip .routes { margin-top:6px; border-top:1px solid var(--divider-color,#444); padding-top:4px; white-space:normal; }
   #tip .routes .h { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; }
   #tip .routes .rt { margin:2px 0 0 10px; text-indent:-10px; }
@@ -1176,7 +1176,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const z = !z2m || n.type === 'Unknown' ? '' : z2m.startsWith('/')
       ? `<a href="${esc(z2m)}" data-side="${esc(n.id)}" title="open the device in the Zigbee2MQTT add-on, here over the map">Z2M</a>`
       : `<a href="${esc(z2m)}/#/device/0/${encodeURIComponent(n.id)}" data-side="${esc(n.id)}" target="_blank" rel="noopener" title="open the device in the Zigbee2MQTT frontend, here over the map (Ctrl-click: new tab)">Z2M</a>`;
-    return z + (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '') + this.joinLink(n);
+    return z + (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
   }
   // "permit join here": open the network through this router (or the coordinator); while open that way, the countdown and a stop
   // join state, as the radios see it: Zigbee2MQTT keeps ONE timer (the latest request), but a request through a router is a
@@ -1199,7 +1199,7 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   // click / tap on a node: its card stays until clicked, Esc, a click on the background or another node; it carries the links
   pinTip(d, e) {
-    const fill = () => { this.showTip(e, this.nodeTipHtml(d) + `<div class="tiplinks">${this.devLinks(d) || '<span class="muted">no links (set the Zigbee2MQTT URL in the options, ⚙)</span>'}</div><div class="tiphint">click to close</div>`, true);
+    const fill = () => { this.showTip(e, this.nodeTipHtml(d) + `<div class="tiplinks">${this.devLinks(d) || '<span class="muted">no links (set the Zigbee2MQTT URL in the options, ⚙)</span>'}</div>${this.joinLink(d) ? `<div class="tiplinks tipjoin">${this.joinLink(d)}</div>` : ''}<div class="tiphint">click to close</div>`, true);
       this.tip.classed('pinned', true); this.wireLinks(this.tip.node()); };
     this._pinned = d; this._refill = fill; fill();
     if (!this._reg) this.loadRegistry().then(() => { if (this._pinned === d) fill(); });
