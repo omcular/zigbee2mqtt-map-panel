@@ -66,4 +66,5 @@ def test_unknown_endpoint_counts_as_end_device() -> None:
 def test_degenerate_maps() -> None:
     assert mesh_from_map({"nodes": [], "links": []}) is None
     assert mesh_from_map({"nodes": [_node("A", "A")], "links": []}) is None  # no coordinator
-    assert mesh_from_map({"nodes": [_node("C", "Coordinator", "Coordinator"), _node("A", "A")], "links": []}) is None  # nobody linked
+    m = mesh_from_map({"nodes": [_node("C", "Coordinator", "Coordinator"), _node("A", "A")], "links": []})  # nobody linked: zeros, A ignored
+    assert m == {"connected": 0, "redundant": 0, "routers": 0, "ignored": ["A"], "bottleneck": None, "spof": None}

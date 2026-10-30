@@ -64,7 +64,8 @@ def _classify(raw: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], list[dict
 
 
 def mesh_from_map(raw: dict[str, Any]) -> dict[str, Any] | None:
-    """See the module docstring. Returns None when there is no coordinator or fewer than two members."""
+    """See the module docstring. Returns None without a coordinator; with one but no linked router, zeros and the
+    ignored list (a mesh that has fallen apart is a result, not a missing one)."""
     nodes, links = _classify(raw)
     coord = next((ieee for ieee, n in nodes.items() if n["type"] == COORDINATOR), None)
     usable = [l for l in links if not l["end_link"] and not l["one_sided"] and l["min"] > 0]
@@ -74,8 +75,10 @@ def mesh_from_map(raw: dict[str, Any]) -> dict[str, Any] | None:
     if coord:
         members.append(coord)
     ignored = [nodes[ieee]["name"] for ieee in routers if ieee not in linked]
-    if not coord or len(members) < 2:
+    if not coord:
         return None
+    if len(members) < 2:
+        return {"connected": 0, "redundant": 0, "routers": 0, "ignored": ignored, "bottleneck": None, "spof": None}
 
     def reach(threshold: int, without: str | None = None) -> set[str]:
         adj: dict[str, list[str]] = {ieee: [] for ieee in members}

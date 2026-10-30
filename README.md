@@ -29,9 +29,11 @@ tell you at a glance how strong the router mesh is. Installed from HACS, set up 
 - **Scan while viewing** — while the panel is open it can re-scan at a second, shorter interval; nothing happens when
   nobody is looking. Several open panels share one schedule.
 - **Entities** — the scan intervals, a "Scan now" button, a "Last scan" timestamp sensor (with router, end-device
-  and link counts) and the two mesh sensors, "Mesh connected at LQI" and "Mesh redundant at LQI", belong to a device
-  "Zigbee2MQTT map". The mesh sensors get a value with every scan, so their history is the health of your mesh over
-  time, and an automation can warn when it drops. Their attributes name what limits each number (the bottleneck link,
+  and link counts) and three mesh sensors, "Mesh connected at LQI", "Mesh redundant at LQI" and "Mesh routers ignored", belong to a
+  device "Zigbee2MQTT map". The mesh sensors get a value with every scan, so their history is the health of your mesh
+  over time. "Mesh routers ignored" counts the routers that had no two-sided link in the scan, so a router that went
+  dark shows there (the other two are computed over the routers still in the mesh); it reads 0 when all is well, which
+  makes it the one to alert on. Their attributes name what limits each number (the bottleneck link,
   the single point of failure, the routers that would be cut off, the routers ignored for having no two-sided link).
   A history graph of both, for a dashboard:
 
@@ -41,6 +43,7 @@ tell you at a glance how strong the router mesh is. Installed from HACS, set up 
   entities:
     - sensor.zigbee2mqtt_map_mesh_connected_at_lqi
     - sensor.zigbee2mqtt_map_mesh_redundant_at_lqi
+    - sensor.zigbee2mqtt_map_mesh_routers_ignored
   ```
 - **Pairing from the map** — a "permit join" button opens the network for 254 s with a countdown (click again to
   close), a router's card offers "permit join here" to join through that router, and a feed next to the scan status

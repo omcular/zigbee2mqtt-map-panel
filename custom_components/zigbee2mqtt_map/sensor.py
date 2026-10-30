@@ -18,7 +18,7 @@ from .entity import MapEntity
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: MapCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([LastScanSensor(coordinator), MeshSensor(coordinator, "connected"), MeshSensor(coordinator, "redundant")])
+    async_add_entities([LastScanSensor(coordinator), MeshSensor(coordinator, "connected"), MeshSensor(coordinator, "redundant"), MeshSensor(coordinator, "ignored")])
 
 
 class LastScanSensor(MapEntity, SensorEntity):
@@ -60,7 +60,7 @@ class MeshSensor(MapEntity, SensorEntity):
     def __init__(self, coordinator: MapCoordinator, field: str) -> None:
         super().__init__(coordinator, f"mesh_{field}")
         self._field = field
-        self._attr_icon = "mdi:lan-connect" if field == "connected" else "mdi:lan-check"
+        self._attr_icon = {"connected": "mdi:lan-connect", "redundant": "mdi:lan-check", "ignored": "mdi:lan-disconnect"}[field]
 
     @property
     def _mesh(self) -> dict[str, Any] | None:
@@ -74,12 +74,16 @@ class MeshSensor(MapEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | None:
-        return self._mesh[self._field] if self._mesh else None
+        if not self._mesh:
+            return None
+        return len(self._mesh["ignored"]) if self._field == "ignored" else self._mesh[self._field]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         if not (m := self._mesh):
             return {}
+        if self._field == "ignored":  # routers Zigbee2MQTT knows that had no two-sided link in the scan: 0 is healthy
+            return {"ignored": list(m.get("ignored", [])), "routers": m.get("routers")}
         if self._field == "connected":
             b = m.get("bottleneck")
             return {

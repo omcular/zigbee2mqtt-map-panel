@@ -68,6 +68,9 @@
       },
       "mesh_redundant": {
         "name": "Mesh redundant at LQI"
+      },
+      "mesh_ignored": {
+        "name": "Mesh routers ignored"
       }
     }
   }

@@ -114,9 +114,11 @@ async def test_scan_round_trip_and_websocket(hass: HomeAssistant, hass_ws_client
     sensor = hass.states.get("sensor.zigbee2mqtt_map_last_scan")
     assert sensor.state != "unknown"
     assert sensor.attributes["routers"] == 1 and sensor.attributes["end_devices"] == 1 and sensor.attributes["links"] == 1
-    # the mesh numbers travel with the map and feed the two sensors (RAW_MAP: one router, one-sided → ignored → no mesh)
-    assert map_event["mesh"] is None
-    assert hass.states.get("sensor.zigbee2mqtt_map_mesh_connected_at_lqi").state == "unknown"
+    # the mesh numbers travel with the map and feed the sensors (RAW_MAP: one router with a one-sided link → ignored)
+    assert map_event["mesh"]["connected"] == 0 and map_event["mesh"]["ignored"] == ["Router A"]
+    assert hass.states.get("sensor.zigbee2mqtt_map_mesh_connected_at_lqi").state == "0"
+    ignored = hass.states.get("sensor.zigbee2mqtt_map_mesh_routers_ignored")
+    assert ignored.state == "1" and ignored.attributes["ignored"] == ["Router A"]
 
     # a new subscriber gets the stored map right away
     client2 = await hass_ws_client(hass)
@@ -314,6 +316,7 @@ async def test_mesh_sensors(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
     assert connected.attributes["cut_off"] == ["Router B"] and connected.attributes["ignored"] == [] and connected.attributes["routers"] == 2
     assert redundant.state == "0" and redundant.attributes["single_point_of_failure"] == "Router A" and redundant.attributes["cut_off"] == ["Router B"]
     assert redundant.attributes["limited_by_connected_link"] is False
+    assert hass.states.get("sensor.zigbee2mqtt_map_mesh_routers_ignored").state == "0"
 
     client = await hass_ws_client(hass)
     await client.send_json({"id": 1, "type": WS_SUBSCRIBE})
