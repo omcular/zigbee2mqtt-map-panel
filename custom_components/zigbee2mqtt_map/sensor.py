@@ -83,7 +83,7 @@ class MeshSensor(MapEntity, SensorEntity):
         if not (m := self._mesh):
             return {}
         if self._field == "ignored":  # routers Zigbee2MQTT knows that had no two-sided link in the scan: 0 is healthy
-            return {"ignored": list(m.get("ignored", [])), "routers": m.get("routers")}
+            return {"ignored": list(m.get("ignored", [])), "not_answering": list(m.get("not_answering", [])), "routers": m.get("routers")}
         if self._field == "connected":
             b = m.get("bottleneck")
             return {

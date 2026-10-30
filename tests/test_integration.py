@@ -118,7 +118,7 @@ async def test_scan_round_trip_and_websocket(hass: HomeAssistant, hass_ws_client
     assert map_event["mesh"]["connected"] == 0 and map_event["mesh"]["ignored"] == ["Router A"]
     assert hass.states.get("sensor.zigbee2mqtt_map_mesh_connected_at_lqi").state == "0"
     ignored = hass.states.get("sensor.zigbee2mqtt_map_mesh_routers_ignored")
-    assert ignored.state == "1" and ignored.attributes["ignored"] == ["Router A"]
+    assert ignored.state == "1" and ignored.attributes["ignored"] == ["Router A"] and ignored.attributes["not_answering"] == []
 
     # a new subscriber gets the stored map right away
     client2 = await hass_ws_client(hass)

@@ -35,7 +35,9 @@ def _classify(raw: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], list[dict
         if not ieee or ieee in removed:
             continue
         kind = n.get("type") or "Unknown"
-        nodes[ieee] = {"name": n.get("friendlyName") or ieee, "type": kind, "is_end": kind in END_LIKE}
+        # Zigbee2MQTT tags a router whose neighbour-table request failed with "lqi" (a routing-table failure alone is the
+        # Tuya quirk, not silence)
+        nodes[ieee] = {"name": n.get("friendlyName") or ieee, "type": kind, "is_end": kind in END_LIKE, "silent": "lqi" in (n.get("failed") or [])}
     raw_links = [
         l for l in raw.get("links", [])
         if l.get("sourceIeeeAddr") and l.get("targetIeeeAddr")
@@ -44,7 +46,7 @@ def _classify(raw: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], list[dict
     for l in raw_links:
         for ieee in (l["sourceIeeeAddr"], l["targetIeeeAddr"]):
             if ieee not in nodes:
-                nodes[ieee] = {"name": f"{ieee} (not in device list)", "type": "Unknown", "is_end": True}
+                nodes[ieee] = {"name": f"{ieee} (not in device list)", "type": "Unknown", "is_end": True, "silent": False}
     pairs: dict[tuple[str, str], dict[str, Any]] = {}
     for l in raw_links:
         a, b = sorted((l["sourceIeeeAddr"], l["targetIeeeAddr"]))
@@ -75,10 +77,11 @@ def mesh_from_map(raw: dict[str, Any]) -> dict[str, Any] | None:
     if coord:
         members.append(coord)
     ignored = [nodes[ieee]["name"] for ieee in routers if ieee not in linked]
+    not_answering = [nodes[ieee]["name"] for ieee in routers if nodes[ieee]["silent"]]  # did not answer the scan at all
     if not coord:
         return None
     if len(members) < 2:
-        return {"connected": 0, "redundant": 0, "routers": 0, "ignored": ignored, "bottleneck": None, "spof": None}
+        return {"connected": 0, "redundant": 0, "routers": 0, "ignored": ignored, "not_answering": not_answering, "bottleneck": None, "spof": None}
 
     def reach(threshold: int, without: str | None = None) -> set[str]:
         adj: dict[str, list[str]] = {ieee: [] for ieee in members}
@@ -139,6 +142,7 @@ def mesh_from_map(raw: dict[str, Any]) -> dict[str, Any] | None:
         "redundant": redundant,
         "routers": len(members) - 1,
         "ignored": ignored,
+        "not_answering": not_answering,
         "bottleneck": bottleneck,
         "spof": spof,
     }

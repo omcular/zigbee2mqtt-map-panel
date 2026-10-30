@@ -26,7 +26,8 @@ NODES = [
     _node("B", "Router B"),
     _node("D", "Router D"),
     _node("E", "Router E"),
-    _node("F", "Router F"),
+    _node("F", "Router F", failed=["lqi"]),  # did not answer the scan: silent, and (one-sided only) ignored
+    _node("H", "Router H", failed=["routingTable"]),  # the Tuya quirk: answered the neighbour request, not the routing one
     _node("S", "Sensor", "EndDevice"),
     _node("G", "Gone", removed=True),
 ]
@@ -34,6 +35,7 @@ LINKS = (
     _pair("C", "A", 200, 210) + _pair("C", "B", 150, 160) + _pair("A", "B", 120, 130) + _pair("B", "D", 100, 110)
     + _pair("A", "D", 90, 95) + _pair("A", "E", 70, 75) + _pair("D", "E", 60, 65)
     + _pair("A", "F", 180, None)  # F reports nothing: one-sided, F is ignored
+    + _pair("A", "H", 140, 140) + _pair("B", "H", 140, 140)  # H has two ways home, so it changes no number
     + _pair("A", "S", 255, None)  # end device: never part of the mesh
     + _pair("C", "G", 255, 255)  # removed with its links
 )
@@ -45,8 +47,8 @@ def test_hand_computed_graph() -> None:
     assert m["bottleneck"] == {"source": "A", "target": "E", "lost": ["E"]}
     assert m["redundant"] == 60  # at 70, removing A leaves E with D–E (60) only
     assert m["spof"] == {"id": "A", "lost": ["E"]}
-    assert m["ignored"] == ["Router F"]
-    assert m["routers"] == 4  # A B D E: F ignored, G removed, S an end device
+    assert m["ignored"] == ["Router F"] and m["not_answering"] == ["Router F"]
+    assert m["routers"] == 5  # A B D E H: F ignored, G removed, S an end device
 
 
 def test_zero_on_one_side_is_one_sided() -> None:
@@ -67,4 +69,4 @@ def test_degenerate_maps() -> None:
     assert mesh_from_map({"nodes": [], "links": []}) is None
     assert mesh_from_map({"nodes": [_node("A", "A")], "links": []}) is None  # no coordinator
     m = mesh_from_map({"nodes": [_node("C", "Coordinator", "Coordinator"), _node("A", "A")], "links": []})  # nobody linked: zeros, A ignored
-    assert m == {"connected": 0, "redundant": 0, "routers": 0, "ignored": ["A"], "bottleneck": None, "spof": None}
+    assert m == {"connected": 0, "redundant": 0, "routers": 0, "ignored": ["A"], "not_answering": [], "bottleneck": None, "spof": None}
