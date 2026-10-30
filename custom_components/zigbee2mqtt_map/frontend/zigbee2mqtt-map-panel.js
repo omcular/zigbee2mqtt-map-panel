@@ -208,7 +208,7 @@ const STYLE = `
   .node.removed { filter:grayscale(1); opacity:.55; }
   .link.removed line.vis, .link.removed path.arr, .lql.removed { filter:grayscale(1); opacity:.45; }
   details#devs tr.removed td { color:var(--muted); } details#devs tr.removed td.name { text-decoration:line-through; }
-  #bar button#join.open { font-variant-numeric:tabular-nums; }
+  #bar button#join.open { font-variant-numeric:tabular-nums; } #bar button#join:disabled { opacity:.6; cursor:default; }
   #feed { color:var(--primary-text-color,#dfe3ea); } #feed:empty { display:none; } #feed.bad { color:var(--orange); }
   .lql { pointer-events:none; }
   .lql text { font-size:9px; font-weight:600; fill:#10131a; }
@@ -529,12 +529,21 @@ class ZigbeeMapPanel extends HTMLElement {
   async permitJoin(seconds, device = null) {
     const h = this._hass; if (!h) return;
     this._join.pending = seconds > 0 ? (device || 'all') : 'stop';   // claimed by the next status event (Zigbee2MQTT's end stamp)
-    this.feed(seconds > 0 ? 'permit join requested…' : 'closing the network…', false, 10000);
+    this.joinBusy(seconds > 0 ? 'opening…' : 'closing…');
     try { await h.callWS({ type: WS.permitJoin, time: seconds, ...(device ? { device } : {}) }); }
-    catch (e) { this._join.pending = null; this.feed('permit join failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''), true); }
+    catch (e) { this._join.pending = null; this.joinBusy(null); this.feed('permit join failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''), true); }
+  }
+  // between the tap and Zigbee2MQTT's bridge info the button says what it is doing and ignores taps (a few seconds at most)
+  joinBusy(text) {
+    const b = this.$?.('join'); if (!b) return;
+    clearTimeout(this._joinBusyT); this._joinBusyT = null;
+    if (!text) { b.disabled = false; return; }
+    b.textContent = text; b.disabled = true;
+    this._joinBusyT = setTimeout(() => { b.disabled = false; this.syncJoin(this._status?.permit_join_end); }, 5000);   // no info came: back to what Zigbee2MQTT last said
   }
   syncJoin(endIso) {
     const J = this._join, now = Date.now(), end = endIso ? Date.parse(endIso) : 0;
+    this.joinBusy(null);
     this._joinEnd = end > now ? end : 0;
     if (!this._joinEnd) { J.all = 0; J.via = {}; }
     else if (end !== J.lastEnd) {   // a new request: ours (pending says where) or someone else's (unknown where)
