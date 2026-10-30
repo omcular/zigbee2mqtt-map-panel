@@ -208,7 +208,7 @@ const STYLE = `
   .node.removed { filter:grayscale(1); opacity:.55; }
   .link.removed line.vis, .link.removed path.arr, .lql.removed { filter:grayscale(1); opacity:.45; }
   details#devs tr.removed td { color:var(--muted); } details#devs tr.removed td.name { text-decoration:line-through; }
-  #bar button#join.open { border-color:var(--green); color:var(--green); font-variant-numeric:tabular-nums; }
+  #bar button#join.open { font-variant-numeric:tabular-nums; }
   #feed { color:var(--primary-text-color,#dfe3ea); } #feed:empty { display:none; } #feed.bad { color:var(--orange); }
   .lql { pointer-events:none; }
   .lql text { font-size:9px; font-weight:600; fill:#10131a; }
@@ -231,7 +231,7 @@ const BAR = `
   <ha-menu-button></ha-menu-button>
   <span id="lq" title="show only links whose weaker direction is above this LQI · press or drag on the bar · far left: show all">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
   <label>find <input type="text" id="find" placeholder="node name…"></label>
-  <button id="join" title="let new devices join the network for 254 s (Zigbee2MQTT closes it again by itself); click again to close now · administrators only · a router's card offers 'permit join here' for joining through that router">permit join</button>
+  <button id="join" class="primary" title="let new devices join the network for 254 s (Zigbee2MQTT closes it again by itself); click again to close now · administrators only · a router's card offers 'permit join here' for joining through that router">permit join</button>
   <details id="devs" class="dd"><summary>devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
   <details id="opts" class="dd"><summary>options <i class="arr"></i></summary><div class="menu">
     <h4>Show</h4>
@@ -538,7 +538,8 @@ class ZigbeeMapPanel extends HTMLElement {
     const tick = () => {
       const left = this._joinEnd - Date.now();
       if (left <= 0) { this._joinEnd = 0; this._joinVia = null; clearInterval(this._joinT); this._joinT = null; b.textContent = 'permit join'; b.classList.remove('open'); if (this._pinned && this._refill) this._refill(); return; }
-      b.textContent = `join open ${mmss(left)} ✕`; b.classList.add('open');
+      b.textContent = `join open ${this._joinVia ? '(1) ' : ''}${mmss(left)} ✕`; b.classList.add('open');   // (1): through one router only
+      if (this._pinned && this._refill) this._refill();   // a card's 'joining here' line counts down too
     };
     clearInterval(this._joinT); this._joinT = null;
     tick(); if (this._joinEnd) this._joinT = setInterval(tick, 1000);
