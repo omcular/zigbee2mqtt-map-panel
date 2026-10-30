@@ -886,7 +886,7 @@ class ZigbeeMapPanel extends HTMLElement {
     withImg.append('image').attr('class', 'img')
       .attr('href', d => imgUrl(d.model)).attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
       .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); g.classList.remove('hasimg'); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); g.__data__._r = g.__data__.isEnd ? 7 : 12; });
-    ne.append('g').attr('class', 'orbit').append('circle').attr('class', 'dot').attr('r', 5.2)
+    ne.append('g').attr('class', 'orbit').append('circle').attr('class', 'dot').attr('r', 7.8)
       .each(function () { const a = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform'); a.setAttribute('attributeName', 'transform'); a.setAttribute('type', 'rotate'); a.setAttribute('from', '0 0 0'); a.setAttribute('to', '360 0 0'); a.setAttribute('dur', '1.6s'); a.setAttribute('repeatCount', 'indefinite'); this.parentNode.appendChild(a); });   // an electron around a node open for joining
     ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle');
     // labels follow renames: rewrite the text whenever the node's name differs from what is drawn (covers new nodes too)
