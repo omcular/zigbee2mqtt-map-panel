@@ -5,6 +5,10 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+## Unreleased
+
+- Option "Zigbee2MQTT frontend" and the help say which form to use on HAOS and on Core/Container (the frontend's URL with scheme), and that https HA cannot embed a plain-http frontend.
+
 ## 2.1.0 – 2026-10-29
 
 - Releases carry the integration as a zip asset, which is what HACS downloads from now on (install counts per release).
