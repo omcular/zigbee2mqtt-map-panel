@@ -219,6 +219,7 @@ async def test_permit_join(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
     await hass.async_block_till_done()
     ev = (await client.receive_json())["event"]
     assert ev["type"] == "status" and ev["permit_join_end"] == "2027-01-15T08:00:00+00:00"
+    assert ev["permit_join_all"] is None and ev["permit_join_via"] == {}  # opened elsewhere: unattributed
     async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": True, "permit_join_end": 1800000000000}))  # unchanged: silent
     async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": False}))
     await hass.async_block_till_done()
@@ -227,10 +228,31 @@ async def test_permit_join(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
     await client.send_json({"id": 2, "type": WS_PERMIT_JOIN, "device": "0x2"})
     assert (await client.receive_json())["result"] == {"published": True}
     assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/permit_join", '{"time":254,"device":"0x2"}')
-    await client.send_json({"id": 3, "type": WS_PERMIT_JOIN, "time": 0})
+    # the next bridge/info is attributed to that router; a second router adds up; a broadcast replaces; a close clears
+    async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": True, "permit_join_end": 1800000100000}))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev["permit_join_via"] == {"0x2": "2027-01-15T08:01:40+00:00"} and ev["permit_join_all"] is None
+    await client.send_json({"id": 20, "type": WS_PERMIT_JOIN, "device": "0x9"})
+    assert (await client.receive_json())["result"] == {"published": True}
+    async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": True, "permit_join_end": 1800000200000}))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev["permit_join_via"] == {"0x2": "2027-01-15T08:01:40+00:00", "0x9": "2027-01-15T08:03:20+00:00"}
+    await client.send_json({"id": 21, "type": WS_PERMIT_JOIN})
+    assert (await client.receive_json())["result"] == {"published": True}
+    async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": True, "permit_join_end": 1800000300000}))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev["permit_join_all"] == "2027-01-15T08:05:00+00:00" and ev["permit_join_via"] == {}
+    await client.send_json({"id": 22, "type": WS_PERMIT_JOIN, "time": 0})
     assert (await client.receive_json())["result"] == {"published": True}
     assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/permit_join", '{"time":0}')
-    await client.send_json({"id": 4, "type": WS_PERMIT_JOIN, "time": 300})
+    async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": False}))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev["permit_join_end"] is None and ev["permit_join_all"] is None and ev["permit_join_via"] == {}
+    await client.send_json({"id": 23, "type": WS_PERMIT_JOIN, "time": 300})
     assert (await client.receive_json())["success"] is False
 
     async_fire_mqtt_message(hass, "z2m/bridge/response/permit_join", json.dumps({"status": "error", "error": "Device 'x' does not exist"}))

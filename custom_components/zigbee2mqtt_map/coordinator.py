@@ -56,6 +56,11 @@ class MapCoordinator:
         self.last_request: datetime | None = None
         self.scanning: str | None = None  # kind while a scan is running
         self.permit_join_end: datetime | None = None  # from <base>/bridge/info; None while the network is closed
+        # what this integration asked for, so every panel shows the same picture: a broadcast end, or one end per router
+        # (each router keeps its own timer; a request from elsewhere, e.g. the Zigbee2MQTT frontend, stays unattributed)
+        self.permit_join_all: datetime | None = None
+        self.permit_join_via: dict[str, datetime] = {}
+        self._permit_pending: str | None = None
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
         self.entities: dict[str, str] = {}  # role -> entity_id, filled by the platforms
         self._listeners: set[Listener] = set()
@@ -127,6 +132,8 @@ class MapCoordinator:
             "last_request": self.last_request.isoformat() if self.last_request else None,
             "settings": dict(self.settings),
             "permit_join_end": self.permit_join_end.isoformat() if self.permit_join_end else None,
+            "permit_join_all": self.permit_join_all.isoformat() if self.permit_join_all else None,
+            "permit_join_via": {ieee: end.isoformat() for ieee, end in self.permit_join_via.items()},
         }
 
     @callback
@@ -260,9 +267,23 @@ class MapCoordinator:
             return
         end = info.get("permit_join_end") if info.get("permit_join") else None
         new = dt_util.utc_from_timestamp(end / 1000) if isinstance(end, (int, float)) else None
-        if new != self.permit_join_end:
-            self.permit_join_end = new
-            self._notify(self.status_event())
+        if new == self.permit_join_end:
+            return
+        now = dt_util.utcnow()
+        if new is None:
+            self.permit_join_all = None
+            self.permit_join_via = {}
+        elif self._permit_pending == "all":
+            self.permit_join_all = new
+            self.permit_join_via = {}
+        elif self._permit_pending not in (None, "stop"):
+            self.permit_join_via[self._permit_pending] = new
+        if self.permit_join_all and self.permit_join_all <= now:
+            self.permit_join_all = None
+        self.permit_join_via = {ieee: end for ieee, end in self.permit_join_via.items() if end > now}
+        self._permit_pending = None
+        self.permit_join_end = new
+        self._notify(self.status_event())
 
     @callback
     def _on_event(self, msg: mqtt.ReceiveMessage) -> None:
@@ -307,6 +328,7 @@ class MapCoordinator:
         payload: dict[str, Any] = {"time": seconds}
         if device:
             payload["device"] = device
+        self._permit_pending = "stop" if seconds == 0 else (device or "all")  # claimed by the next bridge/info
         await mqtt.async_publish(self.hass, f"{self.base_topic}/bridge/request/permit_join", json_dumps(payload))
 
     @callback

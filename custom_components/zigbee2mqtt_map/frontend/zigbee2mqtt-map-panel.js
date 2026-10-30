@@ -304,7 +304,7 @@ const BAR = `
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Devices left without a visible link are lined up along the bottom of the screen. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
-      <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown; "also here" opens that router too (each router keeps its own 254 s; the button lists every running countdown, soonest first); a dot circles every node the network is open through, "stop" closes the network everywhere. A join opened from another browser shows without the router names. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
+      <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown; "also here" opens that router too (each router keeps its own 254 s; the button lists every running countdown, soonest first); a dot circles every node the network is open through, "stop" closes the network everywhere. A join opened from the Zigbee2MQTT frontend shows without the router names. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
       <dt>pairing feed</dt><dd>next to the scan status: joined → interviewing → paired (or failed) → the device appears on the map at once (parked at the edge until a scan wires it) and is selected, so its card offers the Z2M link for naming it; renames and removals in Zigbee2MQTT reach the map the same way, without a scan</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
@@ -380,7 +380,7 @@ class ZigbeeMapPanel extends HTMLElement {
   setting(k) { const v = parseFloat(this.S.settings?.[k]); return Number.isFinite(v) ? v : null; }
   lastRequestMs() { const t = this.S.last_request ? Date.parse(this.S.last_request) : NaN; return Number.isFinite(t) ? t : 0; }
 
-  _join = { all: 0, via: {}, pending: null, lastEnd: 0 };   // see joinLink
+  _join = { all: 0, via: {} };   // see joinLink
   connectedCallback() { if (!this._built) { this._built = true; this.build(); } else { if (this._onKey) window.addEventListener('keydown', this._onKey); this.watchStore(); if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000); } }   // HA may re-attach the same element
 
   async build() {
@@ -494,7 +494,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const st = this.$('status');
     switch (ev.type) {
       case 'status':
-        this._status = ev; this.syncSched(); this.checkStale(); this.syncJoin(ev.permit_join_end);
+        this._status = ev; this.syncSched(); this.checkStale(); this.syncJoin(ev);
         if (this._pinned && this._refill) this._refill();   // the card's 'permit join here' line follows the countdown
         if (ev.scanning && !this._scan) this.beginScan(ev.scanning); else if (!ev.scanning && this._scan) this.endScan();
         // first status of this visit and the integration has never scanned (the integration also scans by itself ~20 s
@@ -529,10 +529,9 @@ class ZigbeeMapPanel extends HTMLElement {
   // (permit_join_end from Zigbee2MQTT's bridge info), so a reload or a second browser shows the same clock
   async permitJoin(seconds, device = null) {
     const h = this._hass; if (!h) return;
-    this._join.pending = seconds > 0 ? (device || 'all') : 'stop';   // claimed by the next status event (Zigbee2MQTT's end stamp)
     this.joinBusy(seconds > 0 ? 'opening…' : 'closing…');
     try { await h.callWS({ type: WS.permitJoin, time: seconds, ...(device ? { device } : {}) }); }
-    catch (e) { this._join.pending = null; this.joinBusy(null); this.feed('permit join failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''), true); }
+    catch (e) { this.joinBusy(null); this.feed('permit join failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''), true); }
   }
   // between the tap and Zigbee2MQTT's bridge info the button says what it is doing and ignores taps (a few seconds at most)
   joinBusy(text) {
@@ -540,7 +539,7 @@ class ZigbeeMapPanel extends HTMLElement {
     clearTimeout(this._joinBusyT); this._joinBusyT = null;
     if (!text) { b.disabled = false; return; }
     b.textContent = text; b.disabled = true;
-    this._joinBusyT = setTimeout(() => { b.disabled = false; this.syncJoin(this._status?.permit_join_end); }, 5000);   // no info came: back to what Zigbee2MQTT last said
+    this._joinBusyT = setTimeout(() => { b.disabled = false; this.syncJoin(this._status); }, 5000);   // no info came: back to what Zigbee2MQTT last said
   }
   // every running countdown, soonest first: the broadcast's, or one per router asked; Zigbee2MQTT's own stamp is appended when
   // it belongs to none of them (a join opened elsewhere)
@@ -555,15 +554,12 @@ class ZigbeeMapPanel extends HTMLElement {
     const J = this._join, now = Date.now(), all = J.all > now;
     this.gn.selectAll('g.node').classed('joinopen', d => !d.isEnd && d.type !== 'Unknown' && !d.removed && (all || J.via[d.id] > now));
   }
-  syncJoin(endIso) {
-    const J = this._join, now = Date.now(), end = endIso ? Date.parse(endIso) : 0;
+  syncJoin(st) {
+    const J = this._join, now = Date.now(), end = st?.permit_join_end ? Date.parse(st.permit_join_end) : 0;
     this.joinBusy(null);
     this._joinEnd = end > now ? end : 0;
-    if (!this._joinEnd) { J.all = 0; J.via = {}; }
-    else if (end !== J.lastEnd) {   // a new request: ours (pending says where) or someone else's (unknown where)
-      if (J.pending === 'all') { J.all = end; J.via = {}; } else if (J.pending && J.pending !== 'stop') J.via[J.pending] = end;
-    }
-    J.pending = null; J.lastEnd = end;
+    J.all = this._joinEnd && st?.permit_join_all ? Date.parse(st.permit_join_all) : 0;
+    J.via = {}; if (this._joinEnd) for (const [id, iso] of Object.entries(st?.permit_join_via || {})) { const t = Date.parse(iso); if (t > now) J.via[id] = t; }
     const b = this.$?.('join'); if (!b) return;
     const tick = () => {
       const now = Date.now(), left = this._joinEnd - now;
@@ -1193,7 +1189,8 @@ class ZigbeeMapPanel extends HTMLElement {
   // "permit join here": open the network through this router (or the coordinator); while open that way, the countdown and a stop
   // join state, as the radios see it: Zigbee2MQTT keeps ONE timer (the latest request), but a request through a router is a
   // single unicast to that router and closes nothing elsewhere, so routers opened one after another are all open, each with
-  // its own 254 s; a close (time 0) is always a broadcast. Who was asked is known only in the browser that asked.
+  // its own 254 s; a close (time 0) is always a broadcast. The integration remembers what it was asked (broadcast end, one end
+  // per router), so every panel shows the same; a join opened elsewhere (the Zigbee2MQTT frontend) shows without a router.
   joinLink(n) {
     if (n.isEnd || n.type === 'Unknown' || n.removed) return '';
     const J = this._join, now = Date.now(), via = Object.keys(J.via).filter(id => J.via[id] > now);
