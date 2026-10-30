@@ -15,7 +15,7 @@ from homeassistant.helpers.event import async_call_later, async_track_time_inter
 from homeassistant.helpers.json import json_dumps
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
-from homeassistant.util.json import json_loads_object
+from homeassistant.util.json import json_loads_array, json_loads_object
 
 from .const import (
     CONF_BASE_TOPIC,
@@ -76,6 +76,8 @@ class MapCoordinator:
         self._unsubs.append(
             await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/{SCAN_KIND_FAST}/progress", self._on_progress)
         )
+        # retained device list: a rename in Zigbee2MQTT reaches the panel without a new scan
+        self._unsubs.append(await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/devices", self._on_devices))
         self._unsubs.append(async_track_time_interval(self.hass, self._on_timer, timedelta(seconds=TIMER_INTERVAL)))
         if self.map is None:
             self._unsubs.append(async_call_later(self.hass, FIRST_SCAN_DELAY, self._first_scan))
@@ -182,6 +184,29 @@ class MapCoordinator:
         _LOGGER.debug("map received: %d nodes, %d links", len(value.get("nodes", [])), len(value.get("links", [])))
         self._notify(self.map_event())
         self._notify(self.status_event())
+
+    @callback
+    def _on_devices(self, msg: mqtt.ReceiveMessage) -> None:
+        """Zigbee2MQTT's device list (retained, re-published on every change): carry renames into the stored map."""
+        if not self.map:
+            return
+        try:
+            devices = json_loads_array(msg.payload)
+        except ValueError:
+            return
+        names = {d["ieee_address"]: d["friendly_name"] for d in devices if isinstance(d, dict) and d.get("ieee_address") and d.get("friendly_name")}
+        changed = 0
+        for node in self.map["map"].get("nodes", []):
+            name = names.get(node.get("ieeeAddr"))
+            if name and node.get("friendlyName") != name:
+                node["friendlyName"] = name
+                changed += 1
+        if not changed:
+            return
+        self.map["updatedAt"] = dt_util.utcnow().isoformat()
+        self._save()
+        _LOGGER.debug("device list: %d node name(s) updated in the stored map", changed)
+        self._notify(self.map_event())
 
     @callback
     def _on_progress(self, msg: mqtt.ReceiveMessage) -> None:

@@ -143,6 +143,37 @@ async def test_scan_round_trip_and_websocket(hass: HomeAssistant, hass_ws_client
     assert PANEL_URL_PATH not in hass.data[frontend.DATA_PANELS]
 
 
+async def test_rename_reaches_the_stored_map(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
+    """A friendly-name change in Zigbee2MQTT's device list patches the stored map and is pushed to subscribers."""
+    await _setup(hass)
+    async_fire_mqtt_message(hass, "z2m/bridge/response/networkmap", json.dumps({"status": "ok", "data": {"value": RAW_MAP}}))
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": WS_SUBSCRIBE})
+    assert (await client.receive_json())["success"]
+    assert (await client.receive_json())["event"]["type"] == "status"
+    first = (await client.receive_json())["event"]
+    assert first["type"] == "map" and "updatedAt" not in first
+
+    devices = [
+        {"ieee_address": "0x1", "friendly_name": "Coordinator", "type": "Coordinator"},
+        {"ieee_address": "0x2", "friendly_name": "Router B", "type": "Router"},
+        {"ieee_address": "0x9", "friendly_name": "Not in the map", "type": "Router"},
+    ]
+    async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps(devices))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev["type"] == "map" and ev["fetchedAt"] == first["fetchedAt"] and ev["updatedAt"]
+    assert [n["friendlyName"] for n in ev["map"]["nodes"]] == ["Coordinator", "Router B", "Sensor"]
+
+    # the same list again, or an unreadable one, changes nothing and sends nothing
+    async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps(devices))
+    async_fire_mqtt_message(hass, "z2m/bridge/devices", "not json")
+    await hass.async_block_till_done()
+    await hass.data[DOMAIN][next(iter(hass.data[DOMAIN]))].async_set_setting("parallel", True)
+    assert (await client.receive_json())["event"]["type"] == "status"
+
+
 async def test_scan_needs_admin(hass: HomeAssistant, hass_ws_client, hass_read_only_access_token) -> None:
     await _setup(hass)
     client = await hass_ws_client(hass, hass_read_only_access_token)

@@ -437,7 +437,7 @@ class ZigbeeMapPanel extends HTMLElement {
     try { await loadD3(); } catch (e) { this.$('status').textContent = e.message; return; }
     this.initGraph();
     const cached = lsGet(LS.map, null);
-    if (cached) { this.setMap(cached.map, cached.fetchedAt); }
+    if (cached) { this.setMap(cached.map, cached.fetchedAt, cached.updatedAt || cached.fetchedAt); }
     else this.$('status').textContent = 'no map yet, press ⤓ to scan';
     this.watchStore();
     new ResizeObserver(() => this.onResize()).observe(this.$('canvas'));
@@ -488,13 +488,16 @@ class ZigbeeMapPanel extends HTMLElement {
         break;
       case 'scan_started': if (!this._scan) this.beginScan(ev.kind); break;
       case 'progress': if (this._scan) this._scan.progress = ` · ${ev.done}/${ev.total} routers${ev.failed ? `, ${ev.failed} not answering` : ''}`; break;
-      case 'map':
-        if (this.data && this.data.fetchedAt === ev.fetchedAt) break;
+      case 'map': {
+        // updatedAt moves when the integration patched names from Zigbee2MQTT's device list (a rename, no new scan)
+        const key = ev.updatedAt || ev.fetchedAt;
+        if (this.data && this.data.key === key) break;
         this.endScan();
-        lsSet(LS.map, { fetchedAt: ev.fetchedAt, map: ev.map });
-        this.setMap(ev.map, ev.fetchedAt);
+        lsSet(LS.map, { fetchedAt: ev.fetchedAt, updatedAt: ev.updatedAt, map: ev.map });
+        this.setMap(ev.map, ev.fetchedAt, key);
         if (ev.duration) st.append(` · scan took ${ev.duration} s`);   // append, not textContent +=: that would flatten the clickable mesh numbers into plain text
         break;
+      }
       case 'error': this.endScan(); st.textContent = 'Zigbee2MQTT: ' + ev.message; break;
     }
   }
@@ -516,7 +519,7 @@ class ZigbeeMapPanel extends HTMLElement {
     } catch (e) { this.endScan(); st.textContent = 'scan request failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''); }
   }
 
-  setMap(map, fetchedAt) {
+  setMap(map, fetchedAt, key = fetchedAt) {
     const { nodes, links } = mergeMap(map);
     const saved = lsGet(LS.pos, {}), now = Date.now(); let seeded = 0;
     // keep live positions of nodes that already exist
@@ -547,7 +550,7 @@ class ZigbeeMapPanel extends HTMLElement {
       for (const r of l.rA) if (r.to === coordNwk && !uplink[r.via]) uplink[r.via] = r.via === l.s.id ? l.t : l.s;
     }
     this._uplink = uplink; this._hasRoutes = links.some(l => l.routes.length > 0);
-    this.data = { nodes, links, byId, fetchedAt };
+    this.data = { nodes, links, byId, fetchedAt, key };
     let wantSel = [...this.sel].map(n => n.id);   // a new scan keeps the current selection if the nodes still exist
     if (firstMap) { const saved = lsGet(LS.sel, null); wantSel = Array.isArray(saved) ? saved : saved ? [saved] : []; }
     this.sel = new Set(wantSel.map(id => byId[id]).filter(Boolean));

@@ -5,6 +5,7 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- A device renamed in Zigbee2MQTT gets its new name in the map at once, without a new scan: the integration follows the bridge's device list and patches the stored map.
 - Option "Zigbee2MQTT frontend" and the help say which form to use on HAOS and on Core/Container (the frontend's URL with scheme), and that https HA cannot embed a plain-http frontend.
 
 ## 2.1.0 – 2026-10-29
