@@ -221,6 +221,7 @@ const STYLE = `
   .node.pinned .halo { fill-opacity:0.22; }
   .node.pinned .shape { stroke:var(--primary-text-color,#fff); }
   .node.stale .ring { stroke:var(--red); stroke-dasharray:3 2; }
+  .node .orbit { display:none; } .node.joinopen .orbit { display:block; } .node .orbit .dot { fill:var(--primary-color,#03a9f4); stroke:var(--bgc); stroke-width:1px; }   /* open for joining: a dot circles the node */
   .node.sel .shape { stroke:var(--yellow); stroke-width:3px; }
   .node.sel circle.imgbg { stroke:var(--yellow); stroke-width:2px; }
   .node.pinned circle.imgbg { stroke:var(--primary-text-color,#fff); stroke-width:1px; }
@@ -303,7 +304,7 @@ const BAR = `
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Devices left without a visible link are lined up along the bottom of the screen. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
-      <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown; "also here" opens that router too (each router keeps its own 254 s; the button lists every running countdown, soonest first), "stop" closes the network everywhere. A join opened from another browser shows without the router names. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
+      <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown; "also here" opens that router too (each router keeps its own 254 s; the button lists every running countdown, soonest first); a dot circles every node the network is open through, "stop" closes the network everywhere. A join opened from another browser shows without the router names. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
       <dt>pairing feed</dt><dd>next to the scan status: joined → interviewing → paired (or failed) → the device appears on the map at once (parked at the edge until a scan wires it) and is selected, so its card offers the Z2M link for naming it; renames and removals in Zigbee2MQTT reach the map the same way, without a scan</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
@@ -548,6 +549,12 @@ class ZigbeeMapPanel extends HTMLElement {
     if (this._joinEnd && !ends.includes(this._joinEnd)) ends.push(this._joinEnd);
     return ends.map(t => mmss(t - now));
   }
+  // nodes the network is open through right now (the broadcast: every router and the coordinator) get the orbiting dot
+  markJoinOpen() {
+    if (!this.gn) return;
+    const J = this._join, now = Date.now(), all = J.all > now;
+    this.gn.selectAll('g.node').classed('joinopen', d => !d.isEnd && d.type !== 'Unknown' && !d.removed && (all || J.via[d.id] > now));
+  }
   syncJoin(endIso) {
     const J = this._join, now = Date.now(), end = endIso ? Date.parse(endIso) : 0;
     this.joinBusy(null);
@@ -562,7 +569,8 @@ class ZigbeeMapPanel extends HTMLElement {
       const now = Date.now(), left = this._joinEnd - now;
       for (const id of Object.keys(J.via)) if (J.via[id] <= now) delete J.via[id];   // that router's own timer ran out
       if (J.all <= now) J.all = 0;
-      if (left <= 0) { this._joinEnd = 0; J.via = {}; clearInterval(this._joinT); this._joinT = null; b.textContent = 'permit join'; b.classList.remove('open'); if (this._pinned && this._refill) this._refill(); return; }
+      if (left <= 0) { this._joinEnd = 0; J.via = {}; clearInterval(this._joinT); this._joinT = null; b.textContent = 'permit join'; b.classList.remove('open'); this.markJoinOpen(); if (this._pinned && this._refill) this._refill(); return; }
+      this.markJoinOpen();
       b.textContent = `join open ${this.joinClocks(now).join(' ')} ✕`; b.classList.add('open');
       if (this._pinned && this._refill) this._refill();   // a card's join line counts down too
     };
@@ -882,10 +890,13 @@ class ZigbeeMapPanel extends HTMLElement {
     withImg.append('image').attr('class', 'img')
       .attr('href', d => imgUrl(d.model)).attr('preserveAspectRatio', 'xMidYMid meet').style('display', $('showImg').checked ? null : 'none')
       .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); g.classList.remove('hasimg'); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); g.__data__._r = g.__data__.isEnd ? 7 : 12; });
+    ne.append('g').attr('class', 'orbit').append('circle').attr('class', 'dot').attr('r', 2.6)
+      .each(function () { const a = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform'); a.setAttribute('attributeName', 'transform'); a.setAttribute('type', 'rotate'); a.setAttribute('from', '0 0 0'); a.setAttribute('to', '360 0 0'); a.setAttribute('dur', '1.6s'); a.setAttribute('repeatCount', 'indefinite'); this.parentNode.appendChild(a); });   // an electron around a node open for joining
     ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle');
     // labels follow renames: rewrite the text whenever the node's name differs from what is drawn (covers new nodes too)
     this.gn.selectAll('g.node').each(function (d) { const t = this.querySelector('text'); if (t.__label !== d.name) { t.__label = d.name; wrapLabel(t, d.name, d.isEnd ? 90 : 100); } });
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale).classed('removed', d => d.removed);
+    this.markJoinOpen();
     this.applyImgSize(); this.applyNames();
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
     this._deg = deg;
@@ -912,6 +923,7 @@ class ZigbeeMapPanel extends HTMLElement {
       if (d.type === 'Coordinator') shape.attr('r', 11 * f); else if (d.isEnd) shape.attr('r', 4 * f); else shape.attr('x', -8 * f).attr('y', -8 * f).attr('width', 16 * f).attr('height', 16 * f).attr('rx', 3 * f);
       g.select('text').attr('dy', has && on ? r + 11 : (d.isEnd ? 7 : 11) * f + 10);
       d._r = has && on ? r + 1 : (d.type === 'Coordinator' ? 14 : d.isEnd ? 7 : 12) * f;   // where this node's own links end
+      g.select('g.orbit circle.dot').attr('cx', d._r + 3);   // the electron rides just outside the rim, where the links end
       // the stale ring and the pin halo follow the image size, otherwise they sit inside a large picture
       const ringR = has && on ? r : (d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12) * f;
       g.select('circle.ring').attr('r', ringR); g.select('circle.halo').attr('r', ringR + 7);
