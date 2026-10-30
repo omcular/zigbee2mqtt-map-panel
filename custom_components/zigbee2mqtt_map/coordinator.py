@@ -291,13 +291,16 @@ class MapCoordinator:
 
     @callback
     def _on_permit_join_response(self, msg: mqtt.ReceiveMessage) -> None:
-        """Only errors matter here: a successful request shows up as a new bridge/info."""
+        """Zigbee2MQTT's answer: "join OK" for the feed, or the error; the countdown itself comes from bridge/info."""
         try:
             data = json_loads_object(msg.payload)
         except ValueError:
             return
         if data.get("status") != "ok":
             self._notify({"type": EVENT_ERROR, "message": f"permit join: {data.get('error') or 'unknown error'}"})
+            return
+        time = data.get("data", {}).get("time") if isinstance(data.get("data"), dict) else None
+        self._notify({"type": EVENT_Z2M, "event": "permit_join", "status": "ok", "time": time})
 
     async def async_permit_join(self, seconds: int, device: str | None = None) -> None:
         """Open (seconds > 0) or close (0) the network, globally or through one router (friendly name or IEEE)."""

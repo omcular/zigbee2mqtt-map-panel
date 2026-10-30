@@ -237,6 +237,10 @@ async def test_permit_join(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
     await hass.async_block_till_done()
     ev = (await client.receive_json())["event"]
     assert ev["type"] == "error" and ev["message"] == "permit join: Device 'x' does not exist"
+    async_fire_mqtt_message(hass, "z2m/bridge/response/permit_join", json.dumps({"status": "ok", "data": {"time": 254}}))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev == {"type": "z2m_event", "event": "permit_join", "status": "ok", "time": 254}
 
     async_fire_mqtt_message(
         hass, "z2m/bridge/event",
