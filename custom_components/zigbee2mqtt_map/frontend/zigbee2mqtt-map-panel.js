@@ -923,10 +923,10 @@ class ZigbeeMapPanel extends HTMLElement {
       if (d.type === 'Coordinator') shape.attr('r', 11 * f); else if (d.isEnd) shape.attr('r', 4 * f); else shape.attr('x', -8 * f).attr('y', -8 * f).attr('width', 16 * f).attr('height', 16 * f).attr('rx', 3 * f);
       g.select('text').attr('dy', has && on ? r + 11 : (d.isEnd ? 7 : 11) * f + 10);
       d._r = has && on ? r + 1 : (d.type === 'Coordinator' ? 14 : d.isEnd ? 7 : 12) * f;   // where this node's own links end
-      g.select('g.orbit circle.dot').attr('cx', d._r + 5);   // the electron rides just outside the rim, where the links end
       // the stale ring and the pin halo follow the image size, otherwise they sit inside a large picture
       const ringR = has && on ? r : (d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12) * f;
       g.select('circle.ring').attr('r', ringR); g.select('circle.halo').attr('r', ringR + 7);
+      g.select('g.orbit circle.dot').attr('cx', ringR);   // the electron rides on the selection ring
     });
     const f = S0 / 30;
     this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18 * f, on ? S0 * 0.33 + 10 : 0) : Math.max(42 * f, on ? S0 / 2 + 14 : 0));
