@@ -303,7 +303,7 @@ const BAR = `
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Devices left without a visible link are lined up along the bottom of the screen. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
-      <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent). Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
+      <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown, "here only" starts over through that router (Zigbee2MQTT closes the running join and opens a fresh 254 s there), "stop" closes it. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
       <dt>pairing feed</dt><dd>next to the scan status: joined → interviewing → paired (or failed) → the device appears on the map at once (parked at the edge until a scan wires it) and is selected, so its card offers the Z2M link for naming it; renames and removals in Zigbee2MQTT reach the map the same way, without a scan</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
@@ -1155,8 +1155,11 @@ class ZigbeeMapPanel extends HTMLElement {
   // "permit join here": open the network through this router (or the coordinator); while open that way, the countdown and a stop
   joinLink(n) {
     if (n.isEnd || n.type === 'Unknown' || n.removed) return '';
-    if (this._joinEnd && this._joinVia === n.id) return `<span class="muted">joining here · ${mmss(this._joinEnd - Date.now())}</span><a data-join="stop" title="close the network now">stop</a>`;
-    return `<a data-join="${esc(n.id)}" title="let new devices join through this ${n.type === 'Coordinator' ? 'coordinator' : 'router'} for 254 s (administrators only)">permit join here</a>`;
+    if (!this._joinEnd) return `<a data-join="${esc(n.id)}" title="let new devices join through this ${n.type === 'Coordinator' ? 'coordinator' : 'router'} for 254 s (administrators only)">permit join here</a>`;
+    const left = mmss(this._joinEnd - Date.now());
+    if (this._joinVia === n.id) return `<span class="muted">joining here · ${left}</span><a data-join="stop" title="close the network now">stop</a>`;
+    const via = this._joinVia ? (this.data?.byId[this._joinVia]?.name ?? 'another router') : null;   // Zigbee2MQTT does not say which router was asked: known only in the browser that asked
+    return `<span class="muted">join open ${via ? `via ${esc(via)}` : 'everywhere'} · ${left}</span><a data-join="${esc(n.id)}" title="start over through this ${n.type === 'Coordinator' ? 'coordinator' : 'router'} only: Zigbee2MQTT closes the running join and opens a new 254 s through it">here only</a><a data-join="stop" title="close the network now">stop</a>`;
   }
   wireLinks(box, before = () => {}) {
     for (const a of box.querySelectorAll('a[data-nav]')) a.onclick = e => { e.preventDefault(); before(); this.navTo(a.getAttribute('href')); };
