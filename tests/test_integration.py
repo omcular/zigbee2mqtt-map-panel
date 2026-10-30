@@ -13,7 +13,7 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.zigbee2mqtt_map.const import CONF_BASE_TOPIC, DOMAIN, PANEL_URL_PATH, WS_SCAN, WS_SUBSCRIBE
+from custom_components.zigbee2mqtt_map.const import CONF_BASE_TOPIC, DOMAIN, PANEL_URL_PATH, WS_PERMIT_JOIN, WS_SCAN, WS_SUBSCRIBE
 
 RAW_MAP = {
     "nodes": [
@@ -158,20 +158,107 @@ async def test_rename_reaches_the_stored_map(hass: HomeAssistant, hass_ws_client
     devices = [
         {"ieee_address": "0x1", "friendly_name": "Coordinator", "type": "Coordinator"},
         {"ieee_address": "0x2", "friendly_name": "Router B", "type": "Router"},
-        {"ieee_address": "0x9", "friendly_name": "Not in the map", "type": "Router"},
+        {"ieee_address": "0x3", "friendly_name": "Sensor", "type": "EndDevice"},
     ]
     async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps(devices))
     await hass.async_block_till_done()
     ev = (await client.receive_json())["event"]
     assert ev["type"] == "map" and ev["fetchedAt"] == first["fetchedAt"] and ev["updatedAt"]
     assert [n["friendlyName"] for n in ev["map"]["nodes"]] == ["Coordinator", "Router B", "Sensor"]
+    assert not any("removed" in n for n in ev["map"]["nodes"])
 
-    # the same list again, or an unreadable one, changes nothing and sends nothing
+    # the same list again, an unreadable one, or one without the coordinator (partial, at start-up): nothing happens
     async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps(devices))
     async_fire_mqtt_message(hass, "z2m/bridge/devices", "not json")
+    async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps([devices[1]]))
     await hass.async_block_till_done()
-    await hass.data[DOMAIN][next(iter(hass.data[DOMAIN]))].async_set_setting("parallel", True)
+    coordinator = hass.data[DOMAIN][next(iter(hass.data[DOMAIN]))]
+    await coordinator.async_set_setting("parallel", True)
     assert (await client.receive_json())["event"]["type"] == "status"
+
+    # a joined device (0x9) appears as a node without links; a device gone from the list (0x3) is marked, not dropped
+    devices = [
+        {"ieee_address": "0x1", "friendly_name": "Coordinator", "type": "Coordinator"},
+        {"ieee_address": "0x2", "friendly_name": "Router B", "type": "Router"},
+        {"ieee_address": "0x9", "friendly_name": "New plug", "type": "Router", "network_address": 99,
+         "definition": {"vendor": "Nous", "model": "A1Z", "description": "Smart plug", "exposes": []}},
+    ]
+    async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps(devices))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    nodes = {n["ieeeAddr"]: n for n in ev["map"]["nodes"]}
+    assert set(nodes) == {"0x1", "0x2", "0x3", "0x9"}
+    assert nodes["0x9"]["friendlyName"] == "New plug" and nodes["0x9"]["networkAddress"] == 99
+    assert nodes["0x9"]["definition"] == {"vendor": "Nous", "model": "A1Z", "description": "Smart plug"}
+    assert nodes["0x3"]["removed"] is True and "removed" not in nodes["0x2"] and "removed" not in nodes["0x9"]
+    assert len(ev["map"]["links"]) == 1  # links of a removed device stay (the panel greys them)
+
+    # the device comes back (re-paired with the same address): the mark goes
+    devices.append({"ieee_address": "0x3", "friendly_name": "Sensor", "type": "EndDevice"})
+    async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps(devices))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert "removed" not in next(n for n in ev["map"]["nodes"] if n["ieeeAddr"] == "0x3")
+
+    # a scan answer is the mesh as it is: it replaces the patched map wholesale
+    async_fire_mqtt_message(hass, "z2m/bridge/response/networkmap", json.dumps({"status": "ok", "data": {"value": RAW_MAP}}))
+    await hass.async_block_till_done()
+    msgs = [(await client.receive_json())["event"] for _ in range(2)]
+    assert next(m for m in msgs if m["type"] == "map")["map"] == RAW_MAP
+
+
+async def test_permit_join(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
+    """Bridge info drives the countdown in the status, the command publishes the request, the pairing feed is forwarded."""
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": WS_SUBSCRIBE})
+    assert (await client.receive_json())["success"]
+    assert (await client.receive_json())["event"]["permit_join_end"] is None
+
+    async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": True, "permit_join_end": 1800000000000, "version": "2.14.2"}))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev["type"] == "status" and ev["permit_join_end"] == "2027-01-15T08:00:00+00:00"
+    async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": True, "permit_join_end": 1800000000000}))  # unchanged: silent
+    async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": False}))
+    await hass.async_block_till_done()
+    assert (await client.receive_json())["event"]["permit_join_end"] is None
+
+    await client.send_json({"id": 2, "type": WS_PERMIT_JOIN, "device": "0x2"})
+    assert (await client.receive_json())["result"] == {"published": True}
+    assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/permit_join", '{"time":254,"device":"0x2"}')
+    await client.send_json({"id": 3, "type": WS_PERMIT_JOIN, "time": 0})
+    assert (await client.receive_json())["result"] == {"published": True}
+    assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/permit_join", '{"time":0}')
+    await client.send_json({"id": 4, "type": WS_PERMIT_JOIN, "time": 300})
+    assert (await client.receive_json())["success"] is False
+
+    async_fire_mqtt_message(hass, "z2m/bridge/response/permit_join", json.dumps({"status": "error", "error": "Device 'x' does not exist"}))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev["type"] == "error" and ev["message"] == "permit join: Device 'x' does not exist"
+
+    async_fire_mqtt_message(
+        hass, "z2m/bridge/event",
+        json.dumps({"type": "device_interview", "data": {"friendly_name": "0x9", "ieee_address": "0x9", "status": "successful", "supported": True,
+                                                         "definition": {"vendor": "Nous", "model": "A1Z", "description": "plug"}}}),
+    )
+    async_fire_mqtt_message(hass, "z2m/bridge/event", json.dumps({"type": "device_options", "data": {}}))  # not a pairing event
+    async_fire_mqtt_message(hass, "z2m/bridge/event", json.dumps({"type": "device_leave", "data": {"friendly_name": "Old", "ieee_address": "0x3"}}))
+    await hass.async_block_till_done()
+    evs = [(await client.receive_json())["event"] for _ in range(2)]
+    assert evs[0] == {"type": "z2m_event", "event": "device_interview", "friendly_name": "0x9", "ieee_address": "0x9", "status": "successful",
+                      "supported": True, "model": "A1Z", "vendor": "Nous"}
+    assert evs[1]["event"] == "device_leave" and evs[1]["friendly_name"] == "Old" and evs[1]["model"] is None
+
+
+async def test_permit_join_needs_admin(hass: HomeAssistant, hass_ws_client, hass_read_only_access_token, mqtt) -> None:
+    await _setup(hass)
+    client = await hass_ws_client(hass, hass_read_only_access_token)
+    await client.send_json({"id": 1, "type": WS_PERMIT_JOIN})
+    reply = await client.receive_json()
+    assert reply["success"] is False and reply["error"]["code"] == "unauthorized"
+    assert not any(c.args[0].endswith("permit_join") for c in mqtt.async_publish.call_args_list)
 
 
 async def test_scan_needs_admin(hass: HomeAssistant, hass_ws_client, hass_read_only_access_token) -> None:

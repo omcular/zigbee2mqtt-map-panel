@@ -29,6 +29,12 @@ tell you at a glance how strong the router mesh is. Installed from HACS, set up 
   nobody is looking. Several open panels share one schedule.
 - **Entities** — the scan intervals, a "Scan now" button and a "Last scan" timestamp sensor (with router, end-device
   and link counts) belong to a device "Zigbee2MQTT map", so automations can use them too.
+- **Pairing from the map** — a "permit join" button opens the network for 254 s with a countdown (click again to
+  close), a router's card offers "permit join here" to join through that router, and a feed next to the scan status
+  follows the newcomer: joined → interviewing → paired. The device appears on the map at once, parked at the edge
+  until the next scan shows its links. Administrators only.
+- **Follows Zigbee2MQTT's device list** — a rename shows at once, a removed device turns grey with its links until
+  the next scan, no scan needed for either.
 - **Device pictures** from zigbee2mqtt.io (optional), stale-device rings (not seen for 24 h), one-sided links on
   request, routes on request, label search, PNG export.
 

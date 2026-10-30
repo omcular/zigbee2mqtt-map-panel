@@ -39,9 +39,12 @@ DEFAULT_SETTINGS = {SETTING_BACKGROUND_HOURS: 0.0, SETTING_VIEWING_MINUTES: 10, 
 
 WS_SUBSCRIBE = f"{DOMAIN}/subscribe"
 WS_SCAN = f"{DOMAIN}/scan"
+WS_PERMIT_JOIN = f"{DOMAIN}/permit_join"
+PERMIT_JOIN_SECONDS = 254  # Zigbee2MQTT's maximum; it closes the network itself when the time is up
 
 EVENT_STATUS = "status"
 EVENT_MAP = "map"
 EVENT_PROGRESS = "progress"
 EVENT_ERROR = "error"
 EVENT_SCAN_STARTED = "scan_started"
+EVENT_Z2M = "z2m_event"  # device_joined / device_announce / device_interview / device_leave from <base>/bridge/event

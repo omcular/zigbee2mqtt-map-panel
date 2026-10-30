@@ -25,6 +25,7 @@ from .const import (
     EVENT_PROGRESS,
     EVENT_SCAN_STARTED,
     EVENT_STATUS,
+    EVENT_Z2M,
     SCAN_KIND_FAST,
     SCAN_KIND_NORMAL,
     FIRST_SCAN_DELAY,
@@ -54,6 +55,7 @@ class MapCoordinator:
         self.map: dict[str, Any] | None = None  # {"fetchedAt", "map", "duration", "kind"}
         self.last_request: datetime | None = None
         self.scanning: str | None = None  # kind while a scan is running
+        self.permit_join_end: datetime | None = None  # from <base>/bridge/info; None while the network is closed
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
         self.entities: dict[str, str] = {}  # role -> entity_id, filled by the platforms
         self._listeners: set[Listener] = set()
@@ -76,8 +78,15 @@ class MapCoordinator:
         self._unsubs.append(
             await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/{SCAN_KIND_FAST}/progress", self._on_progress)
         )
-        # retained device list: a rename in Zigbee2MQTT reaches the panel without a new scan
+        # retained device list: renames, joins and removals reach the panel without a new scan
         self._unsubs.append(await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/devices", self._on_devices))
+        # retained bridge info: whether (and until when) the network accepts new devices
+        self._unsubs.append(await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/info", self._on_info))
+        # live pairing feed and the answer to a permit-join request
+        self._unsubs.append(await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/event", self._on_event))
+        self._unsubs.append(
+            await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/response/permit_join", self._on_permit_join_response)
+        )
         self._unsubs.append(async_track_time_interval(self.hass, self._on_timer, timedelta(seconds=TIMER_INTERVAL)))
         if self.map is None:
             self._unsubs.append(async_call_later(self.hass, FIRST_SCAN_DELAY, self._first_scan))
@@ -117,6 +126,7 @@ class MapCoordinator:
             "scanning": self.scanning,
             "last_request": self.last_request.isoformat() if self.last_request else None,
             "settings": dict(self.settings),
+            "permit_join_end": self.permit_join_end.isoformat() if self.permit_join_end else None,
         }
 
     @callback
@@ -187,26 +197,114 @@ class MapCoordinator:
 
     @callback
     def _on_devices(self, msg: mqtt.ReceiveMessage) -> None:
-        """Zigbee2MQTT's device list (retained, re-published on every change): carry renames into the stored map."""
+        """Zigbee2MQTT's device list (retained, re-published on every change): renames, joins and removals.
+
+        Renamed → the node's friendlyName follows. Joined → a node without links (the panel parks it until a scan
+        wires it). Removed → the node stays, marked `removed`, so the panel can grey it with its links; the next scan
+        answer replaces the map and drops it for good.
+        """
         if not self.map:
             return
         try:
             devices = json_loads_array(msg.payload)
         except ValueError:
             return
-        names = {d["ieee_address"]: d["friendly_name"] for d in devices if isinstance(d, dict) and d.get("ieee_address") and d.get("friendly_name")}
-        changed = 0
-        for node in self.map["map"].get("nodes", []):
-            name = names.get(node.get("ieeeAddr"))
-            if name and node.get("friendlyName") != name:
-                node["friendlyName"] = name
-                changed += 1
-        if not changed:
+        listed = {d["ieee_address"]: d for d in devices if isinstance(d, dict) and d.get("ieee_address") and d.get("friendly_name")}
+        if not any(d.get("type") == "Coordinator" for d in listed.values()):
+            return  # partial or empty list (Zigbee2MQTT starting up): never mark everything removed on that
+        nodes = self.map["map"].setdefault("nodes", [])
+        renamed = joined = removed = returned = 0
+        for node in nodes:
+            device = listed.get(node.get("ieeeAddr"))
+            if device is None:
+                if not node.get("removed"):
+                    node["removed"] = True
+                    removed += 1
+                continue
+            if node.pop("removed", None):
+                returned += 1
+            if node.get("friendlyName") != device["friendly_name"]:
+                node["friendlyName"] = device["friendly_name"]
+                renamed += 1
+        known = {node.get("ieeeAddr") for node in nodes}
+        for ieee, device in listed.items():
+            if ieee in known:
+                continue
+            node: dict[str, Any] = {
+                "ieeeAddr": ieee,
+                "friendlyName": device["friendly_name"],
+                "type": device.get("type") or "Unknown",
+                "networkAddress": device.get("network_address"),
+                "failed": [],
+            }
+            definition = device.get("definition")
+            if isinstance(definition, dict):
+                node["definition"] = {k: definition.get(k) for k in ("vendor", "model", "description")}
+            nodes.append(node)
+            joined += 1
+        if not (renamed or joined or removed or returned):
             return
         self.map["updatedAt"] = dt_util.utcnow().isoformat()
         self._save()
-        _LOGGER.debug("device list: %d node name(s) updated in the stored map", changed)
+        _LOGGER.debug(
+            "device list: %d renamed, %d joined, %d removed, %d back in the stored map", renamed, joined, removed, returned
+        )
         self._notify(self.map_event())
+
+    @callback
+    def _on_info(self, msg: mqtt.ReceiveMessage) -> None:
+        """<base>/bridge/info (retained): permit_join / permit_join_end (epoch ms) drive the panel's countdown."""
+        try:
+            info = json_loads_object(msg.payload)
+        except ValueError:
+            return
+        end = info.get("permit_join_end") if info.get("permit_join") else None
+        new = dt_util.utc_from_timestamp(end / 1000) if isinstance(end, (int, float)) else None
+        if new != self.permit_join_end:
+            self.permit_join_end = new
+            self._notify(self.status_event())
+
+    @callback
+    def _on_event(self, msg: mqtt.ReceiveMessage) -> None:
+        """<base>/bridge/event: the pairing feed (joined, announce, interview started/successful/failed, leave)."""
+        try:
+            event = json_loads_object(msg.payload)
+        except ValueError:
+            return
+        kind = event.get("type")
+        data = event.get("data")
+        if kind not in ("device_joined", "device_announce", "device_interview", "device_leave") or not isinstance(data, dict):
+            return
+        definition = data.get("definition") if isinstance(data.get("definition"), dict) else {}
+        self._notify(
+            {
+                "type": EVENT_Z2M,
+                "event": kind,
+                "friendly_name": data.get("friendly_name"),
+                "ieee_address": data.get("ieee_address"),
+                "status": data.get("status"),
+                "supported": data.get("supported"),
+                "model": definition.get("model"),
+                "vendor": definition.get("vendor"),
+            }
+        )
+
+    @callback
+    def _on_permit_join_response(self, msg: mqtt.ReceiveMessage) -> None:
+        """Only errors matter here: a successful request shows up as a new bridge/info."""
+        try:
+            data = json_loads_object(msg.payload)
+        except ValueError:
+            return
+        if data.get("status") != "ok":
+            self._notify({"type": EVENT_ERROR, "message": f"permit join: {data.get('error') or 'unknown error'}"})
+
+    async def async_permit_join(self, seconds: int, device: str | None = None) -> None:
+        """Open (seconds > 0) or close (0) the network, globally or through one router (friendly name or IEEE)."""
+        payload: dict[str, Any] = {"time": seconds}
+        if device:
+            payload["device"] = device
+        await mqtt.async_publish(self.hass, f"{self.base_topic}/bridge/request/permit_join", json_dumps(payload))
 
     @callback
     def _on_progress(self, msg: mqtt.ReceiveMessage) -> None:

@@ -6,7 +6,9 @@
  */
 const VERSION = '2.1.0';
 console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
-const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan' };
+const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan', permitJoin: 'zigbee2mqtt_map/permit_join' };
+const JOIN_SECONDS = 254;   // Zigbee2MQTT's maximum; it closes the network itself when the time is up
+const mmss = ms => { const t = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
@@ -29,7 +31,7 @@ let lqScale = null;   // built once d3 is loaded
 const lqSmooth = v => (lqScale ??= d3.scaleLinear().domain([0, 50, 80, 255]).range([LQ.red, LQ.orange, LQ.green, LQ.green2]).interpolate(d3.interpolateHcl).clamp(true))(v);
 const lqColor = v => v == null || v === 0 ? LQ.grey : lqSmooth(v);
 const FOOT = `
-  <span id="scanGrp"><button id="pull" class="primary icon" title="pull a fresh map: scan the network now" aria-label="pull a fresh map"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button><span id="status"></span></span>
+  <span id="scanGrp"><button id="pull" class="primary icon" title="pull a fresh map: scan the network now" aria-label="pull a fresh map"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button><span id="status"></span><span id="feed"></span></span>
   <a id="gear" href="/config/integrations/integration/zigbee2mqtt_map" data-nav title="integration settings: Zigbee2MQTT frontend URL, sidebar title, administrators only · entities, reload">⚙</a>
 `;
 const LQ_GRADIENT = `linear-gradient(to right, ${LQ.red} 0%, ${LQ.orange} ${50 / 2.55}%, ${LQ.green} ${80 / 2.55}%, ${LQ.green2} 100%)`;
@@ -89,7 +91,7 @@ function meshThresholds(nodes, links) {
 }
 
 function mergeMap(map) {
-  const nodes = map.nodes.map(n => ({ id: n.ieeeAddr, name: n.friendlyName || n.ieeeAddr, type: n.type, nwk: n.networkAddress, lastSeen: n.lastSeen ?? null, failed: n.failed || [],
+  const nodes = map.nodes.map(n => ({ id: n.ieeeAddr, name: n.friendlyName || n.ieeeAddr, type: n.type, nwk: n.networkAddress, lastSeen: n.lastSeen ?? null, failed: n.failed || [], removed: !!n.removed,
     model: n.definition?.model ?? '', vendor: n.definition?.vendor ?? '', desc: n.definition?.description ?? '' }));
   const known = new Set(nodes.map(n => n.id));
   for (const l of map.links) for (const a of [l.sourceIeeeAddr, l.targetIeeeAddr]) if (!known.has(a)) { known.add(a); nodes.push({ id: a, name: a + ' (not in device list)', type: 'Unknown', nwk: null, lastSeen: null }); }
@@ -202,6 +204,12 @@ const STYLE = `
   .link line.hit { stroke:transparent; stroke-width:6px; }
   .link.dim, .lql.dim { opacity:0.3; }
   .node.dim .shape, .node.dim .ring, .node.dim .halo, .node.dim image.img, .node.dim text { opacity:0.3; }
+  /* removed from Zigbee2MQTT after the scan: grey in the browser only (the filter greys the photo, the opacity makes the mostly white pictures read as grey) */
+  .node.removed { filter:grayscale(1); opacity:.55; }
+  .link.removed line.vis, .link.removed path.arr, .lql.removed { filter:grayscale(1); opacity:.45; }
+  details#devs tr.removed td { color:var(--muted); } details#devs tr.removed td.name { text-decoration:line-through; }
+  #bar button#join.open { border-color:var(--green); color:var(--green); font-variant-numeric:tabular-nums; }
+  #feed { color:var(--primary-text-color,#dfe3ea); } #feed:empty { display:none; } #feed.bad { color:var(--orange); }
   .lql { pointer-events:none; }
   .lql text { font-size:9px; font-weight:600; fill:#10131a; }
   .node text { font-size:11px; fill:var(--primary-text-color,#dfe3ea); paint-order:stroke; stroke:var(--bgc); stroke-width:3px; pointer-events:none; }
@@ -223,6 +231,7 @@ const BAR = `
   <ha-menu-button></ha-menu-button>
   <span id="lq" title="show only links whose weaker direction is above this LQI · press or drag on the bar · far left: show all">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
   <label>find <input type="text" id="find" placeholder="node name…"></label>
+  <button id="join" title="let new devices join the network for 254 s (Zigbee2MQTT closes it again by itself); click again to close now · administrators only · a router's card offers 'permit join here' for joining through that router">permit join</button>
   <details id="devs" class="dd"><summary>devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
   <details id="opts" class="dd"><summary>options <i class="arr"></i></summary><div class="menu">
     <h4>Show</h4>
@@ -282,7 +291,7 @@ const BAR = `
       <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI contrast" in options sets how much; "spacing" scales all distances)</dd>
       <dt>ghosts</dt><dd>an address in a router's neighbour table that Zigbee2MQTT does not know: a removed device whose entries have not aged out (always LQI 0). Hidden unless "show ghost devices" is on in options; the devices list keeps them, with the routers that still hold them on the card</dd>
-      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "device images" in options puts the zigbee2mqtt.io photo on each node, "node size" scales them, pictures or not (needs internet; the PNG export leaves them out)</dd>
+      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "device images" in options puts the zigbee2mqtt.io photo on each node, "node size" scales them, pictures or not (needs internet; the PNG export leaves them out) · grey node with grey links = removed from Zigbee2MQTT since the last scan (gone with the next scan) · a node parked at the edge without links = joined since the last scan, pull a map to see its links</dd>
       <dt>what a link is</dt><dd>an entry in a router's neighbour table, not a live route. These tables hold ~16 entries and age in and out, so links come and go between scans; judge a path over several scans</dd>
     </dl>
     <h4>Data</h4>
@@ -294,6 +303,8 @@ const BAR = `
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Devices left without a visible link are lined up along the bottom of the screen. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
+      <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent). Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
+      <dt>pairing feed</dt><dd>next to the scan status: joined → interviewing → paired (or failed) → the device appears on the map at once (parked at the edge until a scan wires it) and is selected, so its card offers the Z2M link for naming it; renames and removals in Zigbee2MQTT reach the map the same way, without a scan</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
     </dl>
     <p class="ver">zigbee2mqtt-map-panel v${VERSION}</p>
@@ -376,6 +387,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const mb = r.querySelector('ha-menu-button'); mb.hass = this._hass; mb.narrow = this._narrow;
     this.$ = id => r.getElementById(id);
     this.$('pull').onclick = () => this.pull();
+    this.$('join').onclick = () => this.permitJoin(this._joinEnd ? 0 : JOIN_SECONDS);
     this.$('reload').onclick = () => location.reload();
     // help: each term with its explanation as one block, so a column break never separates them
     for (const dl of r.querySelectorAll('details#help dl')) for (const dt of [...dl.querySelectorAll(':scope > dt')]) {
@@ -480,7 +492,8 @@ class ZigbeeMapPanel extends HTMLElement {
     const st = this.$('status');
     switch (ev.type) {
       case 'status':
-        this._status = ev; this.syncSched(); this.checkStale();
+        this._status = ev; this.syncSched(); this.checkStale(); this.syncJoin(ev.permit_join_end);
+        if (this._pinned && this._refill) this._refill();   // the card's 'permit join here' line follows the countdown
         if (ev.scanning && !this._scan) this.beginScan(ev.scanning); else if (!ev.scanning && this._scan) this.endScan();
         // first status of this visit and the integration has never scanned (the integration also scans by itself ~20 s
         // after a fresh install; whichever comes first wins, the other is refused as "already scanning")
@@ -499,6 +512,7 @@ class ZigbeeMapPanel extends HTMLElement {
         break;
       }
       case 'error': this.endScan(); st.textContent = 'Zigbee2MQTT: ' + ev.message; break;
+      case 'z2m_event': this.onZ2mEvent(ev); break;
     }
   }
   beginScan(kind) {
@@ -507,7 +521,48 @@ class ZigbeeMapPanel extends HTMLElement {
     scan.tick = setInterval(() => { st.textContent = `scan running (${kind})… ${Math.round((Date.now() - t0) / 1000)} s${scan.progress} (leaving the page is fine, the result is kept by Home Assistant)`; }, 1000);
   }
   endScan() { if (!this._scan) return; clearInterval(this._scan.tick); this._scan = null; this.$('pull').disabled = false; }
-  disconnectedCallback() { window.removeEventListener('keydown', this._onKey); clearInterval(this._liveT); this._liveT = null; clearInterval(this._ingressT); this._ingressT = null; this._ingress = null; this.savePos(); this.saveView(); lsSet(LS.sel, [...this.sel].map(n => n.id)); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
+  disconnectedCallback() { window.removeEventListener('keydown', this._onKey); clearInterval(this._liveT); this._liveT = null; clearInterval(this._joinT); this._joinT = null; clearTimeout(this._feedT); this._feedT = null; clearInterval(this._ingressT); this._ingressT = null; this._ingress = null; this.savePos(); this.saveView(); lsSet(LS.sel, [...this.sel].map(n => n.id)); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
+
+  // permit join: the request goes to Zigbee2MQTT through the integration; the countdown comes back in the status events
+  // (permit_join_end from Zigbee2MQTT's bridge info), so a reload or a second browser shows the same clock
+  async permitJoin(seconds, device = null) {
+    const h = this._hass; if (!h) return;
+    this._joinVia = seconds > 0 ? device : null;
+    try { await h.callWS({ type: WS.permitJoin, time: seconds, ...(device ? { device } : {}) }); }
+    catch (e) { this._joinVia = null; this.feed('permit join failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''), true); }
+  }
+  syncJoin(endIso) {
+    const end = endIso ? Date.parse(endIso) : 0; this._joinEnd = end > Date.now() ? end : 0;
+    if (!this._joinEnd) this._joinVia = null;
+    const b = this.$?.('join'); if (!b) return;
+    const tick = () => {
+      const left = this._joinEnd - Date.now();
+      if (left <= 0) { this._joinEnd = 0; this._joinVia = null; clearInterval(this._joinT); this._joinT = null; b.textContent = 'permit join'; b.classList.remove('open'); if (this._pinned && this._refill) this._refill(); return; }
+      b.textContent = `join open ${mmss(left)} ✕`; b.classList.add('open');
+    };
+    clearInterval(this._joinT); this._joinT = null;
+    tick(); if (this._joinEnd) this._joinT = setInterval(tick, 1000);
+  }
+  // the pairing feed from Zigbee2MQTT: what happens to a newcomer, in the footer next to the scan status
+  onZ2mEvent(ev) {
+    const name = ev.friendly_name || ev.ieee_address || 'device';
+    switch (ev.event) {
+      case 'device_joined': this.feed(`joined: ${name}`); break;
+      case 'device_announce': this.feed(`${name} announced itself`); break;
+      case 'device_interview':
+        if (ev.status === 'started') this.feed(`interviewing ${name}…`, false, 0);
+        else if (ev.status === 'successful') { this.feed(ev.supported === false ? `${name} paired, not supported by Zigbee2MQTT` : `${name} paired${ev.model ? ` (${ev.vendor ? ev.vendor + ' ' : ''}${ev.model})` : ''}`, ev.supported === false); this._selectNext = ev.ieee_address; }
+        else this.feed(`interview of ${name} failed`, true);
+        break;
+      case 'device_leave': this.feed(`${name} left the network`); break;
+    }
+  }
+  feed(text, bad = false, ttl = 15000) {
+    const f = this.$?.('feed'); if (!f) return;
+    f.textContent = text; f.classList.toggle('bad', bad);
+    clearTimeout(this._feedT); this._feedT = null;
+    if (ttl) this._feedT = setTimeout(() => { if (f.textContent === text) f.textContent = ''; }, ttl);
+  }
 
   // ask the integration for a scan; the result, progress and errors arrive as events on the subscription
   async pull() {
@@ -528,6 +583,7 @@ class ZigbeeMapPanel extends HTMLElement {
     for (const n of nodes) {
       n.isEnd = n.type === 'EndDevice' || n.type === 'Unknown';
       n.stale = n.type !== 'Coordinator' && n.lastSeen && (now - n.lastSeen) > 86400e3;   // the coordinator has no meaningful last-seen
+      n.joinedUnscanned = n.type !== 'Coordinator' && !n.lastSeen && !n.removed && !links.some(l => l.source === n.id || l.target === n.id);   // came from the device list, not from a scan
       const o = old[n.id], sv = saved[n.id];
       if (o) { n.x = o.x; n.y = o.y; n.fx = o.fx; n.fy = o.fy; }
       else if (sv) { n.x = sv[0]; n.y = sv[1]; if (sv[2]) { n.fx = sv[0]; n.fy = sv[1]; } seeded++; }
@@ -538,6 +594,7 @@ class ZigbeeMapPanel extends HTMLElement {
       l.s = byId[l.source]; l.t = byId[l.target];
       // an end device has no neighbour table, so its link is reported by the parent only: that is normal, not stale
       l.endLink = l.s.isEnd || l.t.isEnd;
+      l.removed = !!(l.s.removed || l.t.removed);   // the device left Zigbee2MQTT after this scan: drawn grey, out of the mesh numbers
       const vals = [l.lqS, l.lqT].filter(v => v != null && v > 0);
       l.min = l.endLink ? (vals.length ? Math.min(...vals) : 0) : Math.min(l.lqS ?? 999, l.lqT ?? 999);
       l.oneSided = !l.endLink && (l.lqS == null || l.lqT == null || l.lqS === 0 || l.lqT === 0);
@@ -547,16 +604,17 @@ class ZigbeeMapPanel extends HTMLElement {
     const coord = nodes.find(n => n.type === 'Coordinator'), coordNwk = coord?.nwk ?? 0, uplink = {};
     for (const l of links) {
       l.rA = l.routes.filter(r => r.status === 'ACTIVE'); l.rVia = new Set(l.rA.map(r => r.via));
-      for (const r of l.rA) if (r.to === coordNwk && !uplink[r.via]) uplink[r.via] = r.via === l.s.id ? l.t : l.s;
+      if (!l.removed) for (const r of l.rA) if (r.to === coordNwk && !uplink[r.via]) uplink[r.via] = r.via === l.s.id ? l.t : l.s;
     }
     this._uplink = uplink; this._hasRoutes = links.some(l => l.routes.length > 0);
     this.data = { nodes, links, byId, fetchedAt, key };
     let wantSel = [...this.sel].map(n => n.id);   // a new scan keeps the current selection if the nodes still exist
     if (firstMap) { const saved = lsGet(LS.sel, null); wantSel = Array.isArray(saved) ? saved : saved ? [saved] : []; }
     this.sel = new Set(wantSel.map(id => byId[id]).filter(Boolean));
+    if (this._selectNext && byId[this._selectNext]) { this.sel = new Set([byId[this._selectNext]]); this._selectNext = null; }   // a device that just paired: show where it landed
     if (firstMap && this.sel.size) this._selOnly = true;
     const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator').length, ends = nodes.filter(n => n.isEnd).length;
-    const mesh = meshThresholds(nodes, links); this.mesh = mesh;
+    const mesh = meshThresholds(nodes.filter(n => !n.removed), links.filter(l => !l.removed)); this.mesh = mesh;
     const st = this.$('status'); st.textContent = 'scanned ';
     const age = document.createElement('span'); age.id = 'mapAge'; age.dataset.t = new Date(fetchedAt).getTime(); age.title = new Date(fetchedAt).toLocaleString();
     st.append(age, ` · ${routers} routers, ${ends} end devices, ${links.length} links`); this.tickAge();
@@ -747,7 +805,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const le = link.enter().append('g').attr('class', 'link');
     le.append('line').attr('class', 'vis'); le.append('line').attr('class', 'hit');
     le.append('path').attr('class', 'arr arrS').attr('d', 'M-9,-5 L0,0 L-9,5 Z'); le.append('path').attr('class', 'arr arrT').attr('d', 'M-9,-5 L0,0 L-9,5 Z');
-    const lm = le.merge(link);
+    const lm = le.merge(link).classed('removed', l => l.removed);
     lm.select('line.vis').attr('stroke', color).attr('stroke-width', width).attr('stroke-dasharray', l => l.oneSided ? '4 4' : null);
     const ro = this.routesOn();
     lm.select('path.arrS').attr('fill', color).style('display', l => ro && l.rVia?.has(l.s.id) ? null : 'none');
@@ -760,7 +818,7 @@ class ZigbeeMapPanel extends HTMLElement {
     // LQI label: a pill in the link's colour with the two values, centred on the link and turned along it
     const lql = this.glq.selectAll('g.lql').data(links, key); lql.exit().remove();
     const lqe = lql.enter().append('g').attr('class', 'lql'); lqe.append('rect').attr('rx', 4); lqe.append('text').attr('text-anchor', 'middle').attr('dominant-baseline', 'central');
-    const lqm = lqe.merge(lql).style('display', $('showLql').checked ? null : 'none');
+    const lqm = lqe.merge(lql).classed('removed', l => l.removed).style('display', $('showLql').checked ? null : 'none');
     lqm.select('rect').attr('fill', color); lqm.select('text').text(l => `${fmt(l.lqS)} / ${fmt(l.lqT)}`);
     this.sizeLabels();
     const node = this.gn.selectAll('g.node').data(nodes, n => n.id); node.exit().remove();
@@ -800,7 +858,7 @@ class ZigbeeMapPanel extends HTMLElement {
     ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle');
     // labels follow renames: rewrite the text whenever the node's name differs from what is drawn (covers new nodes too)
     this.gn.selectAll('g.node').each(function (d) { const t = this.querySelector('text'); if (t.__label !== d.name) { t.__label = d.name; wrapLabel(t, d.name, d.isEnd ? 90 : 100); } });
-    this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale);
+    this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale).classed('removed', d => d.removed);
     this.applyImgSize(); this.applyNames();
     const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
     this._deg = deg;
@@ -1026,7 +1084,7 @@ class ZigbeeMapPanel extends HTMLElement {
     // zigbee-herdsman stamps the coordinator's lastSeen once, at start-up, and never on traffic: it is the Z2M start time
     const seen = n => !n.lastSeen ? (n.type === 'Coordinator' ? '' : '?') : n.type === 'Coordinator' ? `Z2M up ${ago(Date.now() - n.lastSeen).replace(' ago', '')}` : ago(Date.now() - n.lastSeen);
     const linksFor = n => this.devLinks(n);
-    const row = (n, extra = '') => `<tr data-id="${esc(n.id)}" class="${this.sel.has(n) ? 'sel' : ''}"><td class="name" title="${esc(n.id)}">${esc(n.name)}</td><td>${linksFor(n)}</td><td class="muted">${esc(n.type === 'EndDevice' ? 'end device' : n.type.toLowerCase())}</td>${extra}<td class="muted">${esc(seen(n))}</td></tr>`;
+    const row = (n, extra = '') => `<tr data-id="${esc(n.id)}" class="${this.sel.has(n) ? 'sel' : ''}${n.removed ? ' removed' : ''}"><td class="name" title="${esc(n.id)}">${esc(n.name)}</td><td>${linksFor(n)}</td><td class="muted">${esc(n.type === 'EndDevice' ? 'end device' : n.type.toLowerCase())}${n.removed ? ' · removed' : ''}</td>${extra}<td class="muted">${esc(seen(n))}</td></tr>`;
     // sorting: click a header (name, type, LQI, last seen); again reverses. LQI compares the weaker direction first, then the
     // stronger one; last seen puts the most recent first. Without a choice: devices by type then name, neighbours by LQI.
     const st = this._devSort ??= lsGet(LS.devSort, null) || { key: null, dir: 1 };
@@ -1067,7 +1125,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.wireLinks(box, () => { this.$('devs').open = false; });
   }
   nodeTipHtml(d) {
-    return `<div class="title">${esc(d.name)}</div>` + esc(`${d.type}${d.vendor ? ` · ${d.vendor} ${d.model}` : ''}${d.desc ? `\n${d.desc}` : ''}\nIEEE ${d.id}${d.nwk != null ? `  nwk ${d.nwk}` : ''}${d.lastSeen ? `\n${d.type === 'Coordinator' ? 'Zigbee2MQTT running since' : 'last seen'} ${new Date(d.lastSeen).toLocaleString()}` : ''}\nlinks: ${this.data.links.filter(l => l.s === d || l.t === d).length}`) + this.ghostHtml(d) + this.pathHomeHtml(d);
+    return `<div class="title">${esc(d.name)}</div>` + esc(`${d.removed ? 'removed from Zigbee2MQTT after this scan\n' : d.joinedUnscanned ? 'joined after this scan: pull a map to see its links\n' : ''}${d.type}${d.vendor ? ` · ${d.vendor} ${d.model}` : ''}${d.desc ? `\n${d.desc}` : ''}\nIEEE ${d.id}${d.nwk != null ? `  nwk ${d.nwk}` : ''}${d.lastSeen ? `\n${d.type === 'Coordinator' ? 'Zigbee2MQTT running since' : 'last seen'} ${new Date(d.lastSeen).toLocaleString()}` : ''}\nlinks: ${this.data.links.filter(l => l.s === d || l.t === d).length}`) + this.ghostHtml(d) + this.pathHomeHtml(d);
   }
   // a node that is in somebody's neighbour table but not in Zigbee2MQTT's device list: a device that left or was removed;
   // the entries stay until the routers holding them rebuild their tables (Tuya devices keep the parent they joined through for good)
@@ -1091,17 +1149,24 @@ class ZigbeeMapPanel extends HTMLElement {
     const z = !z2m || n.type === 'Unknown' ? '' : z2m.startsWith('/')
       ? `<a href="${esc(z2m)}" data-side="${esc(n.id)}" title="open the device in the Zigbee2MQTT add-on, here over the map">Z2M</a>`
       : `<a href="${esc(z2m)}/#/device/0/${encodeURIComponent(n.id)}" data-side="${esc(n.id)}" target="_blank" rel="noopener" title="open the device in the Zigbee2MQTT frontend, here over the map (Ctrl-click: new tab)">Z2M</a>`;
-    return z + (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
+    return z + (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '') + this.joinLink(n);
+  }
+  // "permit join here": open the network through this router (or the coordinator); while open that way, the countdown and a stop
+  joinLink(n) {
+    if (n.isEnd || n.type === 'Unknown' || n.removed) return '';
+    if (this._joinEnd && this._joinVia === n.id) return `<span class="muted">joining here · ${mmss(this._joinEnd - Date.now())}</span><a data-join="stop" title="close the network now">stop</a>`;
+    return `<a data-join="${esc(n.id)}" title="let new devices join through this ${n.type === 'Coordinator' ? 'coordinator' : 'router'} for 254 s (administrators only)">permit join here</a>`;
   }
   wireLinks(box, before = () => {}) {
     for (const a of box.querySelectorAll('a[data-nav]')) a.onclick = e => { e.preventDefault(); before(); this.navTo(a.getAttribute('href')); };
+    for (const a of box.querySelectorAll('a[data-join]')) a.onclick = e => { e.preventDefault(); a.dataset.join === 'stop' ? this.permitJoin(0) : this.permitJoin(JOIN_SECONDS, a.dataset.join); };
     for (const a of box.querySelectorAll('a[data-side]')) a.onclick = e => { if (a.target === '_blank' && (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1)) return; e.preventDefault(); before(); this.openZ2m(this.data.byId[a.dataset.side], a.getAttribute('href')); };
   }
   // click / tap on a node: its card stays until clicked, Esc, a click on the background or another node; it carries the links
   pinTip(d, e) {
     const fill = () => { this.showTip(e, this.nodeTipHtml(d) + `<div class="tiplinks">${this.devLinks(d) || '<span class="muted">no links (set the Zigbee2MQTT URL in the options, ⚙)</span>'}</div><div class="tiphint">click to close</div>`, true);
       this.tip.classed('pinned', true); this.wireLinks(this.tip.node()); };
-    this._pinned = d; fill();
+    this._pinned = d; this._refill = fill; fill();
     if (!this._reg) this.loadRegistry().then(() => { if (this._pinned === d) fill(); });
   }
   showTip(e, text, html = false) { const t = this.tip.style('display', 'block').classed('touch', this._lastPtr === 'touch'); if (html) t.html(text); else t.text(text); this.moveTip(e); }
@@ -1113,7 +1178,7 @@ class ZigbeeMapPanel extends HTMLElement {
     let top = y + 14; if (top + h > c.height - m) top = y - 14 - h; top = Math.max(m, Math.min(top, c.height - h - m));
     this.tip.style('left', left + 'px').style('top', top + 'px');
   }
-  hideTip() { this._pinned = null; this.tip.classed('pinned', false).style('display', 'none'); }
+  hideTip() { this._pinned = null; this._refill = null; this.tip.classed('pinned', false).style('display', 'none'); }
   savePng() {
     const svgEl = this.svg.node(), c = this.$('canvas'), w = c.clientWidth, h = c.clientHeight;
     const cs = getComputedStyle(this), bg = cs.getPropertyValue('--primary-background-color').trim() || '#1c2027';

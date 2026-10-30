@@ -5,7 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
-- A device renamed in Zigbee2MQTT gets its new name in the map at once, without a new scan: the integration follows the bridge's device list and patches the stored map.
+- Permit join from the map: a toolbar button opens the network for 254 s with a countdown (click again to close), a router's card offers "permit join here", and a pairing feed next to the scan status follows the newcomer: joined → interviewing → paired or failed. Administrators only.
+- The map follows Zigbee2MQTT's device list without a scan: a renamed device gets its new name, a joined device appears at once (parked at the edge until a scan shows its links, selected after a successful interview), a removed device stays in grey with its links until the next scan.
 - Option "Zigbee2MQTT frontend" and the help say which form to use on HAOS and on Core/Container (the frontend's URL with scheme), and that https HA cannot embed a plain-http frontend.
 
 ## 2.1.0 – 2026-10-29
