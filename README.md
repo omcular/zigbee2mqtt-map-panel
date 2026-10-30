@@ -22,13 +22,26 @@ tell you at a glance how strong the router mesh is. Installed from HACS, set up 
   "Min LQI" filter use the weaker one, so a link that looks fine from one end but not the other shows as what it is.
 - **Mesh numbers** — *connected ≥ C*: the highest LQI at which every router still reaches the coordinator; *redundant
   ≥ R*: the highest LQI at which no single router is a point of failure. Hover to see which link or router limits
-  each number, click to set the filter there.
+  each number, click to set the filter there. The integration computes them after every scan, so the panel and the
+  two sensors below always show the same values.
 - **Last map, always** — the integration asks Zigbee2MQTT for the map on a schedule and keeps the answer, so the panel
   opens with the latest scan on any device, and a scan that finishes after you close the page is not lost.
 - **Scan while viewing** — while the panel is open it can re-scan at a second, shorter interval; nothing happens when
   nobody is looking. Several open panels share one schedule.
-- **Entities** — the scan intervals, a "Scan now" button and a "Last scan" timestamp sensor (with router, end-device
-  and link counts) belong to a device "Zigbee2MQTT map", so automations can use them too.
+- **Entities** — the scan intervals, a "Scan now" button, a "Last scan" timestamp sensor (with router, end-device
+  and link counts) and the two mesh sensors, "Mesh connected at LQI" and "Mesh redundant at LQI", belong to a device
+  "Zigbee2MQTT map". The mesh sensors get a value with every scan, so their history is the health of your mesh over
+  time, and an automation can warn when it drops. Their attributes name what limits each number (the bottleneck link,
+  the single point of failure, the routers that would be cut off, the routers ignored for having no two-sided link).
+  A history graph of both, for a dashboard:
+
+  ```yaml
+  type: history-graph
+  hours_to_show: 168
+  entities:
+    - sensor.zigbee2mqtt_map_mesh_connected_at_lqi
+    - sensor.zigbee2mqtt_map_mesh_redundant_at_lqi
+  ```
 - **Pairing from the map** — a "permit join" button opens the network for 254 s with a countdown (click again to
   close), a router's card offers "permit join here" to join through that router, and a feed next to the scan status
   follows the newcomer: joined → interviewing → paired. The device appears on the map at once, parked at the edge

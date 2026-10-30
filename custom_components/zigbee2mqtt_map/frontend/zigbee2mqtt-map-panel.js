@@ -55,40 +55,9 @@ function wrapLabel(textEl, name, maxW) {
 }
 
 // raw map -> {nodes, links}; source = neighbour, target = reporting device, lqi = what the target hears from the source
-// Two numbers that summarise the router mesh, both from the weaker direction of each two-sided router link:
-//   connected at >= C : the highest LQI threshold at which every router still reaches the coordinator
-//   redundant at >= R : the highest threshold at which no single router is a point of failure (removing any one
-//                       router leaves every other router connected to the coordinator)
-// Routers without any two-sided link (dead or just paired) are left out and reported in `ignored`. Also returns the
-// link that limits C and, for R, the router that becomes a single point of failure just above R and whom it cuts off.
-function meshThresholds(nodes, links) {
-  const coord = nodes.find(n => n.type === 'Coordinator');
-  const usable = links.filter(l => !l.endLink && !l.oneSided && l.min > 0);
-  const linked = new Set(usable.flatMap(l => [l.s.id, l.t.id]));
-  const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator');
-  const members = routers.filter(n => linked.has(n.id)).map(n => n.id); if (coord) members.push(coord.id);
-  const ignored = routers.filter(n => !linked.has(n.id)).map(n => n.name);
-  if (!coord || members.length < 2) return null;
-  const reach = (t, without) => {   // ids reachable from the coordinator over links with min >= t, skipping `without`
-    const adj = {}; for (const id of members) adj[id] = [];
-    for (const l of usable) if (l.min >= t && l.s.id !== without && l.t.id !== without) { adj[l.s.id].push(l.t.id); adj[l.t.id].push(l.s.id); }
-    const seen = new Set([coord.id]), stack = [coord.id];
-    while (stack.length) { const x = stack.pop(); for (const y of adj[x]) if (!seen.has(y) && y !== without) { seen.add(y); stack.push(y); } }
-    return seen;
-  };
-  const allIn = (t, without) => reach(t, without).size === members.length - (without ? 1 : 0);
-  const values = [...new Set(usable.map(l => l.min))].sort((a, b) => a - b);   // candidate thresholds, ascending
-  const best = test => { let r = 0; for (const t of values) { if (test(t)) r = t; else break; } return r; };   // monotone: once it fails it stays failed
-  const connected = best(t => allIn(t));
-  const redundant = best(t => allIn(t) && members.every(id => id === coord.id || allIn(t, id)));
-  // what limits each number
-  const nextAbove = v => values.find(t => t > v);
-  let bottleneck = null; const tc = nextAbove(connected);
-  if (tc != null) { const r = reach(tc); const lost = members.filter(id => !r.has(id)); bottleneck = usable.filter(l => l.min === connected && (r.has(l.s.id) !== r.has(l.t.id)))[0] ?? null; bottleneck = bottleneck && { link: bottleneck, lost }; }
-  let spof = null; const tr = nextAbove(redundant);
-  if (tr != null) { const base = reach(tr); for (const id of members) { if (id === coord.id) continue; const r = reach(tr, id); const lost = members.filter(x => x !== id && base.has(x) && !r.has(x)); if (lost.length) { spof = { id, lost }; break; } } }   // only routers that are reachable at all at that level count as cut off
-  return { connected, redundant, ignored, bottleneck, spof, routers: members.length - 1 };
-}
+// The two mesh numbers (connected ≥ C, redundant ≥ R, what limits each) come with the map from the integration, which
+// computes them after every scan (custom_components/zigbee2mqtt_map/mesh.py): one implementation, the sensors and the
+// footer can never disagree.
 
 function mergeMap(map) {
   const nodes = map.nodes.map(n => ({ id: n.ieeeAddr, name: n.friendlyName || n.ieeeAddr, type: n.type, nwk: n.networkAddress, lastSeen: n.lastSeen ?? null, failed: n.failed || [], removed: !!n.removed,
@@ -301,7 +270,7 @@ const BAR = `
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule: the integration runs one scan at a time and remembers the last request</dd>
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
       <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "pull routes" also reads routing tables (slower, much slower on the first pull). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
-      <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
+      <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>computed by the integration after every scan and also exposed as two sensors (a history graph of them is the mesh's health over time). C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Devices left without a visible link are lined up along the bottom of the screen. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown; "also here" opens that router too (each router keeps its own 254 s; the button lists every running countdown, soonest first); a dot circles every node the network is open through, "stop" closes the network everywhere. A join opened from the Zigbee2MQTT frontend shows without the router names. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
@@ -451,7 +420,7 @@ class ZigbeeMapPanel extends HTMLElement {
     try { await loadD3(); } catch (e) { this.$('status').textContent = e.message; return; }
     this.initGraph();
     const cached = lsGet(LS.map, null);
-    if (cached) { this.setMap(cached.map, cached.fetchedAt, cached.updatedAt || cached.fetchedAt); }
+    if (cached) { this.setMap(cached.map, cached.fetchedAt, cached.updatedAt || cached.fetchedAt, cached.mesh ?? null); }
     else this.$('status').textContent = 'no map yet, press ⤓ to scan';
     this.watchStore();
     new ResizeObserver(() => this.onResize()).observe(this.$('canvas'));
@@ -508,8 +477,8 @@ class ZigbeeMapPanel extends HTMLElement {
         const key = ev.updatedAt || ev.fetchedAt;
         if (this.data && this.data.key === key) break;
         this.endScan();
-        lsSet(LS.map, { fetchedAt: ev.fetchedAt, updatedAt: ev.updatedAt, map: ev.map });
-        this.setMap(ev.map, ev.fetchedAt, key);
+        lsSet(LS.map, { fetchedAt: ev.fetchedAt, updatedAt: ev.updatedAt, map: ev.map, mesh: ev.mesh ?? null });
+        this.setMap(ev.map, ev.fetchedAt, key, ev.mesh ?? null);
         if (ev.duration) st.append(` · scan took ${ev.duration} s`);   // append, not textContent +=: that would flatten the clickable mesh numbers into plain text
         break;
       }
@@ -551,8 +520,8 @@ class ZigbeeMapPanel extends HTMLElement {
   // nodes the network is open through right now (the broadcast: every router and the coordinator) get the orbiting dot
   markJoinOpen() {
     if (!this.gn) return;
-    const J = this._join, now = Date.now(), all = J.all > now;
-    this.gn.selectAll('g.node').classed('joinopen', d => !d.isEnd && d.type !== 'Unknown' && !d.removed && (all || J.via[d.id] > now));
+    const J = this._join, now = Date.now(), all = J.all > now, late = J.late || new Set();   // late: joined after the broadcast started, it never reached them
+    this.gn.selectAll('g.node').classed('joinopen', d => !d.isEnd && d.type !== 'Unknown' && !d.removed && ((all && !late.has(d.id)) || J.via[d.id] > now));
   }
   syncJoin(st) {
     const J = this._join, now = Date.now(), end = st?.permit_join_end ? Date.parse(st.permit_join_end) : 0;
@@ -560,6 +529,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this._joinEnd = end > now ? end : 0;
     J.all = this._joinEnd && st?.permit_join_all ? Date.parse(st.permit_join_all) : 0;
     J.via = {}; if (this._joinEnd) for (const [id, iso] of Object.entries(st?.permit_join_via || {})) { const t = Date.parse(iso); if (t > now) J.via[id] = t; }
+    J.late = new Set(st?.permit_join_late || []);
     const b = this.$?.('join'); if (!b) return;
     const tick = () => {
       const now = Date.now(), left = this._joinEnd - now;
@@ -605,7 +575,7 @@ class ZigbeeMapPanel extends HTMLElement {
     } catch (e) { this.endScan(); st.textContent = 'scan request failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''); }
   }
 
-  setMap(map, fetchedAt, key = fetchedAt) {
+  setMap(map, fetchedAt, key = fetchedAt, mesh = null) {
     const { nodes, links } = mergeMap(map);
     const saved = lsGet(LS.pos, {}), now = Date.now(); let seeded = 0;
     // keep live positions of nodes that already exist
@@ -645,14 +615,14 @@ class ZigbeeMapPanel extends HTMLElement {
     if (this._selectNext && byId[this._selectNext]) { this.sel = new Set([byId[this._selectNext]]); this._selectNext = null; }   // a device that just paired: show where it landed
     if (firstMap && this.sel.size) this._selOnly = true;
     const routers = nodes.filter(n => !n.isEnd && n.type !== 'Coordinator').length, ends = nodes.filter(n => n.isEnd).length;
-    const mesh = meshThresholds(nodes.filter(n => !n.removed), links.filter(l => !l.removed)); this.mesh = mesh;
+    this.mesh = mesh;
     const st = this.$('status'); st.textContent = 'scanned ';
     const age = document.createElement('span'); age.id = 'mapAge'; age.dataset.t = new Date(fetchedAt).getTime(); age.title = new Date(fetchedAt).toLocaleString();
     st.append(age, ` · ${routers} routers, ${ends} end devices, ${links.length} links`); this.tickAge();
     if (mesh) {
       const nm = id => byId[id]?.name ?? id;
       const tipC = `every router reaches the coordinator over links of LQI ${mesh.connected} or better (weaker direction)` +
-        (mesh.bottleneck ? `\nweakest necessary link: ${nm(mesh.bottleneck.link.s.id)} – ${nm(mesh.bottleneck.link.t.id)} (${mesh.connected}); without it ${mesh.bottleneck.lost.length} router${mesh.bottleneck.lost.length === 1 ? '' : 's'} would be cut off` : '') +
+        (mesh.bottleneck ? `\nweakest necessary link: ${nm(mesh.bottleneck.source)} – ${nm(mesh.bottleneck.target)} (${mesh.connected}); without it ${mesh.bottleneck.lost.length} router${mesh.bottleneck.lost.length === 1 ? '' : 's'} would be cut off` : '') +
         (mesh.ignored.length ? `\nignored (no two-sided link): ${mesh.ignored.join(', ')}` : '') + `\nclick: set Min LQI to this level`;
       const tipR = `no single router is a point of failure at LQI ${mesh.redundant} or better: remove any one router and the rest still reach the coordinator` +
         (mesh.spof ? `\njust above that, ${nm(mesh.spof.id)} becomes a single point of failure for ${mesh.spof.lost.map(nm).join(', ')}` : mesh.redundant === mesh.connected ? '\nlimited by the same link as "connected"' : '') + `\nclick: set Min LQI to this level`;

@@ -17,6 +17,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.json import json_loads_array, json_loads_object
 
+from .mesh import mesh_from_map
 from .const import (
     CONF_BASE_TOPIC,
     DEFAULT_SETTINGS,
@@ -60,6 +61,7 @@ class MapCoordinator:
         # (each router keeps its own timer; a request from elsewhere, e.g. the Zigbee2MQTT frontend, stays unattributed)
         self.permit_join_all: datetime | None = None
         self.permit_join_via: dict[str, datetime] = {}
+        self.permit_join_late: set[str] = set()  # routers that joined after the broadcast started: it never reached them
         self._permit_pending: str | None = None
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
         self.entities: dict[str, str] = {}  # role -> entity_id, filled by the platforms
@@ -76,6 +78,8 @@ class MapCoordinator:
             if last := data.get("last_request"):
                 self.last_request = dt_util.parse_datetime(last)
             self.settings.update({k: v for k, v in data.get("settings", {}).items() if k in DEFAULT_SETTINGS})
+            if self.map and "mesh" not in self.map:  # stored by a version without the mesh numbers
+                self.map["mesh"] = mesh_from_map(self.map["map"])
         for kind in (SCAN_KIND_NORMAL, SCAN_KIND_FAST):
             self._unsubs.append(
                 await mqtt.async_subscribe(self.hass, f"{self.base_topic}/bridge/response/{kind}", self._on_response)
@@ -134,6 +138,7 @@ class MapCoordinator:
             "permit_join_end": self.permit_join_end.isoformat() if self.permit_join_end else None,
             "permit_join_all": self.permit_join_all.isoformat() if self.permit_join_all else None,
             "permit_join_via": {ieee: end.isoformat() for ieee, end in self.permit_join_via.items()},
+            "permit_join_late": sorted(self.permit_join_late),
         }
 
     @callback
@@ -196,6 +201,7 @@ class MapCoordinator:
             "map": value,
             "kind": kind,
             "duration": data["data"].get("duration"),
+            "mesh": mesh_from_map(value),
         }
         self._save()
         _LOGGER.debug("map received: %d nodes, %d links", len(value.get("nodes", [])), len(value.get("links", [])))
@@ -221,6 +227,7 @@ class MapCoordinator:
             return  # partial or empty list (Zigbee2MQTT starting up): never mark everything removed on that
         nodes = self.map["map"].setdefault("nodes", [])
         renamed = joined = removed = returned = 0
+        late_changed = False
         for node in nodes:
             device = listed.get(node.get("ieeeAddr"))
             if device is None:
@@ -249,14 +256,21 @@ class MapCoordinator:
                 node["definition"] = {k: definition.get(k) for k in ("vendor", "model", "description")}
             nodes.append(node)
             joined += 1
+            if node["type"] == "Router" and self.permit_join_all and self.permit_join_all > dt_util.utcnow():
+                self.permit_join_late.add(ieee)  # the broadcast was sent before this router existed: its radio is closed
+                late_changed = True
         if not (renamed or joined or removed or returned):
             return
+        if joined or removed or returned:
+            self.map["mesh"] = mesh_from_map(self.map["map"])  # removed nodes leave the mesh, a joined router lands in `ignored`
         self.map["updatedAt"] = dt_util.utcnow().isoformat()
         self._save()
         _LOGGER.debug(
             "device list: %d renamed, %d joined, %d removed, %d back in the stored map", renamed, joined, removed, returned
         )
         self._notify(self.map_event())
+        if late_changed:
+            self._notify(self.status_event())
 
     @callback
     def _on_info(self, msg: mqtt.ReceiveMessage) -> None:
@@ -273,9 +287,11 @@ class MapCoordinator:
         if new is None:
             self.permit_join_all = None
             self.permit_join_via = {}
+            self.permit_join_late = set()
         elif self._permit_pending == "all":
             self.permit_join_all = new
             self.permit_join_via = {}
+            self.permit_join_late = set()
         elif self._permit_pending not in (None, "stop"):
             self.permit_join_via[self._permit_pending] = new
         if self.permit_join_all and self.permit_join_all <= now:

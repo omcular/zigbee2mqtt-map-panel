@@ -62,6 +62,12 @@
     "sensor": {
       "last_scan": {
         "name": "Last scan"
+      },
+      "mesh_connected": {
+        "name": "Mesh connected at LQI"
+      },
+      "mesh_redundant": {
+        "name": "Mesh redundant at LQI"
       }
     }
   }

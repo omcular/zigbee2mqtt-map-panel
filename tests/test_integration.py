@@ -114,6 +114,9 @@ async def test_scan_round_trip_and_websocket(hass: HomeAssistant, hass_ws_client
     sensor = hass.states.get("sensor.zigbee2mqtt_map_last_scan")
     assert sensor.state != "unknown"
     assert sensor.attributes["routers"] == 1 and sensor.attributes["end_devices"] == 1 and sensor.attributes["links"] == 1
+    # the mesh numbers travel with the map and feed the two sensors (RAW_MAP: one router, one-sided → ignored → no mesh)
+    assert map_event["mesh"] is None
+    assert hass.states.get("sensor.zigbee2mqtt_map_mesh_connected_at_lqi").state == "unknown"
 
     # a new subscriber gets the stored map right away
     client2 = await hass_ws_client(hass)
@@ -244,7 +247,18 @@ async def test_permit_join(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
     async_fire_mqtt_message(hass, "z2m/bridge/info", json.dumps({"permit_join": True, "permit_join_end": 1800000300000}))
     await hass.async_block_till_done()
     ev = (await client.receive_json())["event"]
-    assert ev["permit_join_all"] == "2027-01-15T08:05:00+00:00" and ev["permit_join_via"] == {}
+    assert ev["permit_join_all"] == "2027-01-15T08:05:00+00:00" and ev["permit_join_via"] == {} and ev["permit_join_late"] == []
+    # a router that joins while the broadcast runs never received it: listed as late (needs a stored map to land in)
+    async_fire_mqtt_message(hass, "z2m/bridge/response/networkmap", json.dumps({"status": "ok", "data": {"value": RAW_MAP}}))
+    await hass.async_block_till_done()
+    for _ in range(2):
+        await client.receive_json()  # map + status
+    devices = [{"ieee_address": "0x1", "friendly_name": "Coordinator", "type": "Coordinator"}, {"ieee_address": "0x2", "friendly_name": "Router A", "type": "Router"},
+               {"ieee_address": "0x3", "friendly_name": "Sensor", "type": "EndDevice"}, {"ieee_address": "0x7", "friendly_name": "Late", "type": "Router"}]
+    async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps(devices))
+    await hass.async_block_till_done()
+    evs = [(await client.receive_json())["event"] for _ in range(2)]
+    assert next(e for e in evs if e["type"] == "status")["permit_join_late"] == ["0x7"]
     await client.send_json({"id": 22, "type": WS_PERMIT_JOIN, "time": 0})
     assert (await client.receive_json())["result"] == {"published": True}
     assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/permit_join", '{"time":0}')
@@ -276,6 +290,45 @@ async def test_permit_join(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
     assert evs[0] == {"type": "z2m_event", "event": "device_interview", "friendly_name": "0x9", "ieee_address": "0x9", "status": "successful",
                       "supported": True, "model": "A1Z", "vendor": "Nous"}
     assert evs[1]["event"] == "device_leave" and evs[1]["friendly_name"] == "Old" and evs[1]["model"] is None
+
+
+async def test_mesh_sensors(hass: HomeAssistant, hass_ws_client, mqtt) -> None:
+    """Two-sided router links give the mesh numbers; the sensors carry names, the event carries ids; removals recompute."""
+    await _setup(hass)
+    raw = {
+        "nodes": [
+            {"ieeeAddr": "0x1", "friendlyName": "Coordinator", "type": "Coordinator"},
+            {"ieeeAddr": "0x2", "friendlyName": "Router A", "type": "Router"},
+            {"ieeeAddr": "0x3", "friendlyName": "Router B", "type": "Router"},
+        ],
+        "links": [
+            {"sourceIeeeAddr": "0x2", "targetIeeeAddr": "0x1", "lqi": 200}, {"sourceIeeeAddr": "0x1", "targetIeeeAddr": "0x2", "lqi": 180},
+            {"sourceIeeeAddr": "0x3", "targetIeeeAddr": "0x2", "lqi": 90}, {"sourceIeeeAddr": "0x2", "targetIeeeAddr": "0x3", "lqi": 80},
+        ],
+    }
+    async_fire_mqtt_message(hass, "z2m/bridge/response/networkmap", json.dumps({"status": "ok", "data": {"value": raw}}))
+    await hass.async_block_till_done()
+    connected = hass.states.get("sensor.zigbee2mqtt_map_mesh_connected_at_lqi")
+    redundant = hass.states.get("sensor.zigbee2mqtt_map_mesh_redundant_at_lqi")
+    assert connected.state == "80" and connected.attributes["bottleneck"] == "Router A – Router B"
+    assert connected.attributes["cut_off"] == ["Router B"] and connected.attributes["ignored"] == [] and connected.attributes["routers"] == 2
+    assert redundant.state == "0" and redundant.attributes["single_point_of_failure"] == "Router A" and redundant.attributes["cut_off"] == ["Router B"]
+    assert redundant.attributes["limited_by_connected_link"] is False
+
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": WS_SUBSCRIBE})
+    assert (await client.receive_json())["success"]
+    assert (await client.receive_json())["event"]["type"] == "status"
+    mesh = (await client.receive_json())["event"]["mesh"]
+    assert mesh["connected"] == 80 and mesh["bottleneck"] == {"source": "0x2", "target": "0x3", "lost": ["0x3"]}
+
+    # Router B removed in Zigbee2MQTT: the mesh is recomputed without it
+    devices = [{"ieee_address": "0x1", "friendly_name": "Coordinator", "type": "Coordinator"}, {"ieee_address": "0x2", "friendly_name": "Router A", "type": "Router"}]
+    async_fire_mqtt_message(hass, "z2m/bridge/devices", json.dumps(devices))
+    await hass.async_block_till_done()
+    ev = (await client.receive_json())["event"]
+    assert ev["type"] == "map" and ev["mesh"]["connected"] == 180 and ev["mesh"]["routers"] == 1
+    assert hass.states.get("sensor.zigbee2mqtt_map_mesh_connected_at_lqi").state == "180"
 
 
 async def test_permit_join_needs_admin(hass: HomeAssistant, hass_ws_client, hass_read_only_access_token, mqtt) -> None:
