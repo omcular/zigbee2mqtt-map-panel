@@ -304,7 +304,62 @@ const BAR = `
 
 // d3 force: keep nodes off links they do not belong to. A node closer than its clearance to the middle part of a foreign
 // link is pushed out along the link's normal, and the link's two ends get the opposite push (split by where the node sits),
-// so the link bends away as much as the node moves. O(nodes x links) per tick, fine for a few hundred of each.
+// so the link bends away as the node moves. Action and reaction are equal, otherwise every wake turns the whole map a little. O(nodes x links) per tick, fine for a few hundred of each.
+// d3 force: links as springs with EQUAL and opposite pulls on both ends. d3's forceLink splits the correction by degree
+// (a router with ten links moves a tenth, its end device nine tenths); those unequal pulls along one line add up to a net
+// torque on the layout, which showed as the whole map turning a little on every wake. Same accessors as the d3 one where
+// the panel uses them: id, links, distance, strength.
+function forceLinkSym() {
+  let nodes = [], links = [], id = d => d.index, distance = () => 30, strength = () => 0.5, dists = [], strs = [];
+  function force(alpha) {
+    for (let i = 0; i < links.length; i++) {
+      const l = links[i], s = l.source, t = l.target;
+      if (typeof s !== 'object' || typeof t !== 'object') continue;
+      let x = t.x + (t.vx || 0) - s.x - (s.vx || 0), y = t.y + (t.vy || 0) - s.y - (s.vy || 0);
+      let len = Math.sqrt(x * x + y * y); if (len === 0) { x = 1e-6; y = 1e-6; len = Math.sqrt(2) * 1e-6; }
+      const k = (len - dists[i]) / len * alpha * strs[i] * 0.5;   // half to each end
+      x *= k; y *= k;
+      t.vx -= x; t.vy -= y; s.vx += x; s.vy += y;
+    }
+  }
+  function initialize() {
+    if (!nodes.length) return;
+    const byId = new Map(nodes.map(n => [id(n), n]));
+    for (const l of links) { if (typeof l.source !== 'object') l.source = byId.get(l.source); if (typeof l.target !== 'object') l.target = byId.get(l.target); }
+    dists = links.map(distance); strs = links.map(strength);
+  }
+  force.initialize = ns => { nodes = ns; initialize(); };
+  force.links = l => l === undefined ? links : (links = l, initialize(), force);
+  force.id = f => f === undefined ? id : (id = f, force);
+  force.distance = f => f === undefined ? distance : (distance = typeof f === 'function' ? f : () => f, dists = links.map(distance), force);
+  force.strength = f => f === undefined ? strength : (strength = typeof f === 'function' ? f : () => f, strs = links.map(strength), force);
+  return force;
+}
+
+// d3 force: collision with EQUAL and opposite pushes (d3's forceCollide splits the overlap by radius, another source of net
+// torque). Pairwise, fine for tens of nodes. Accessor: radius.
+function forceCollideSym() {
+  let nodes = [], radius = () => 10, radii = [];
+  function force() {
+    const n = nodes.length;
+    for (let i = 0; i < n; i++) {
+      const a = nodes[i], ra = radii[i];
+      for (let j = i + 1; j < n; j++) {
+        const b = nodes[j], rr = ra + radii[j];
+        let dx = b.x + (b.vx || 0) - a.x - (a.vx || 0), dy = b.y + (b.vy || 0) - a.y - (a.vy || 0), d2 = dx * dx + dy * dy;
+        if (d2 >= rr * rr) continue;
+        let d = Math.sqrt(d2); if (d === 0) { dx = 1e-3; dy = 1e-3; d = Math.sqrt(2) * 1e-3; }
+        const k = (rr - d) / d * 0.5;   // half the overlap to each
+        dx *= k; dy *= k; b.vx += dx; b.vy += dy; a.vx -= dx; a.vy -= dy;
+      }
+    }
+  }
+  force.initialize = ns => { nodes = ns; radii = nodes.map(radius); };
+  force.radius = f => f === undefined ? radius : (radius = typeof f === 'function' ? f : () => f, radii = nodes.map(radius), force);
+  force.strength = () => force;   // d3 compatibility, unused
+  return force;
+}
+
 // d3 force: node repulsion with a steeper fall-off than d3's forceManyBody (which is 1/r). Pairwise, O(n²) per tick: a
 // Zigbee mesh has tens of nodes, not thousands, so a quadtree would buy nothing. Strength is per node, as in d3, and is
 // normalised so that at `ref` px the push equals d3's for the same strength: closer pairs push harder than before, farther
@@ -312,22 +367,26 @@ const BAR = `
 function forceRepel(exponent = 1.5, ref = 100) {
   let nodes = [], strengthFn = () => -30, strengths = [];
   const norm = Math.pow(ref, exponent - 1), rmin = 12;   // rmin: no singularity when two nodes land on each other (collide separates them)
+  let pairS = [];   // -sqrt(|s_i| * |s_j|), computed once per strength change
+  const pairs = () => { pairS = strengths.map(si => strengths.map(sj => -Math.sqrt(Math.abs(si) * Math.abs(sj)))); };
   function force(alpha) {
     const n = nodes.length;
     for (let i = 0; i < n; i++) {
-      const a = nodes[i], sa = strengths[i];
+      const a = nodes[i];
       for (let j = i + 1; j < n; j++) {
-        const b = nodes[j], sb = strengths[j];
+        const b = nodes[j];
         let dx = b.x - a.x, dy = b.y - a.y, r = Math.hypot(dx, dy);
         if (r < rmin) { if (r === 0) { dx = 0.01; dy = 0.01; } r = rmin; }
-        const f = alpha * norm / Math.pow(r, exponent + 1);   // × displacement below = unit vector × 1/r^exponent
-        a.vx += dx * f * sb; a.vy += dy * f * sb;   // strengths are negative: a moves away from b, b away from a
-        b.vx -= dx * f * sa; b.vy -= dy * f * sa;
+        // equal and opposite (Newton's third law), the pair's strength the geometric mean of the two: unequal pushes along one
+        // line, as d3's own charge gives, add up to a net torque on the whole layout, and every wake turns the map a little
+        const f = alpha * norm * pairS[i][j] / Math.pow(r, exponent + 1);   // × displacement below = unit vector × 1/r^exponent
+        a.vx += dx * f; a.vy += dy * f;   // pairS is negative: a moves away from b, b away from a
+        b.vx -= dx * f; b.vy -= dy * f;
       }
     }
   }
-  force.initialize = ns => { nodes = ns; strengths = nodes.map(strengthFn); };
-  force.strength = fn => { strengthFn = typeof fn === 'function' ? fn : () => fn; strengths = nodes.map(strengthFn); return force; };
+  force.initialize = ns => { nodes = ns; strengths = nodes.map(strengthFn); pairs(); };
+  force.strength = fn => { if (fn === undefined) return strengthFn; strengthFn = typeof fn === 'function' ? fn : () => fn; strengths = nodes.map(strengthFn); pairs(); return force; };
   return force;
 }
 
@@ -349,7 +408,7 @@ function forceAvoidLinks() {
         const px = a.x + t * dx - n.x, py = a.y + t * dy - n.y, d = Math.hypot(px, py) || 0.01; if (d >= c) continue;
         const push = k * (c - d) / d * 5, fx = -px * push, fy = -py * push;   // away from the link
         n.vx += fx; n.vy += fy;
-        a.vx -= fx * (1 - t) * 0.5; a.vy -= fy * (1 - t) * 0.5; b.vx -= fx * t * 0.5; b.vy -= fy * t * 0.5;
+        a.vx -= fx * (1 - t); a.vy -= fy * (1 - t); b.vx -= fx * t; b.vy -= fy * t;   // the full reaction, split by where the node sits: no net force and no net torque, so the layout does not drift or turn
       }
     }
   }
@@ -748,8 +807,8 @@ class ZigbeeMapPanel extends HTMLElement {
     // k = 0: fixed lengths (210 / 60) · k = 1: 120..300 / 40..100 by LQI · linear in k, floored so strong links never collapse at high contrast
     const dist = l => { const k = this.lqilen, end = l.s.isEnd || l.t.isEnd; return Math.max(end ? 25 : 50, end ? ((60 - 20 * k) + 60 * k * (1 - q(l))) : ((210 - 90 * k) + 180 * k * (1 - q(l)))) * this.spring; };
     const charge = d => (d.isEnd ? -150 : -1100) * this.spring;
-    this.sim = d3.forceSimulation().force('link', d3.forceLink().id(d => d.id).distance(dist).strength(l => this.linkPull(l)))
-      .force('charge', forceRepel(CHARGE_EXPONENT, CHARGE_REF).strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
+    this.sim = d3.forceSimulation().force('link', forceLinkSym().id(d => d.id).distance(dist).strength(l => this.linkPull(l)))
+      .force('charge', forceRepel(CHARGE_EXPONENT, CHARGE_REF).strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', forceCollideSym().radius(d => d.isEnd ? 18 : 42))
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
       .on('tick', () => { this.tickRamp(); this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); if (this._fitOnSettle && this.sim.alpha() < SETTLE_ALPHA) this.fitOnSettle(); })
       .on('end', () => { this.savePos(); if (this._fitOnSettle) this.fitOnSettle(); });
@@ -1006,7 +1065,7 @@ class ZigbeeMapPanel extends HTMLElement {
       // the stale ring and the pin halo follow the image size, otherwise they sit inside a large picture
       const ringR = has && on ? r : (d.type === 'Coordinator' ? 15 : d.isEnd ? 9 : 12) * f;
       g.select('circle.ring').attr('r', ringR); g.select('circle.halo').attr('r', ringR + 7);
-      g.select('g.orbit circle.dot').attr('cx', ringR);   // the electron rides on the selection ring
+      g.select('g.orbit circle.dot').attr('cx', ringR).attr('r', Math.max(3.5, 0.26 * S));   // the electron rides on the selection ring and scales with the node
     });
     const f = S0 / 30;
     this.sim?.force('collide')?.radius(d => d.isEnd ? Math.max(18 * f, on ? S0 * 0.33 + 10 : 0) : Math.max(42 * f, on ? S0 / 2 + 14 : 0));
