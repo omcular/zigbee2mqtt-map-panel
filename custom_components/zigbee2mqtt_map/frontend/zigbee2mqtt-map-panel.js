@@ -588,7 +588,7 @@ class ZigbeeMapPanel extends HTMLElement {
       n.stale = n.type !== 'Coordinator' && n.lastSeen && (now - n.lastSeen) > 86400e3;   // the coordinator has no meaningful last-seen
       n.joinedUnscanned = n.type !== 'Coordinator' && !n.lastSeen && !n.removed && !links.some(l => l.source === n.id || l.target === n.id);   // came from the device list, not from a scan
       const o = old[n.id], sv = saved[n.id];
-      if (o) { n.x = o.x; n.y = o.y; n.fx = o.fx; n.fy = o.fy; }
+      if (o) { n.x = o.x; n.y = o.y; n.fx = o.fx; n.fy = o.fy; n._parked = o._parked; n._userPinned = o._userPinned; }   // parked ≠ pinned: a docked node must not come back as a pin
       else if (sv) { n.x = sv[0]; n.y = sv[1]; if (sv[2]) { n.fx = sv[0]; n.fy = sv[1]; } seeded++; }
     }
     if (seeded > 0 && !this.data) { this.warm = true; this._gentle = true; }   // first map of this visit, positions known: no warm-up, no shake
