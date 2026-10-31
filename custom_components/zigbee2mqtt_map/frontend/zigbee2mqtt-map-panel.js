@@ -256,7 +256,7 @@ const BAR = `
         <tr><td><kbd>r</kbd></td><td>re-layout, forces fading in</td></tr>
         <tr><td><kbd>E</kbd></td><td>show or hide end devices (<kbd>Shift</kbd>-<kbd>e</kbd>; plain <kbd>e</kbd> is Home Assistant's entity search)</td></tr>
         <tr><td><kbd>/</kbd></td><td>jump to the find box</td></tr>
-        <tr><td><kbd>Esc</kbd></td><td>close the card, an open menu, or the selection, in that order</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>close the card, an open menu, leave the find box, or clear the selection, in that order</td></tr>
         <tr><td><kbd>Ctrl</kbd>-<kbd>A</kbd></td><td>select every node shown; again: none · <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears</td></tr>
       </table>Home Assistant's own keys keep working here (e.g. <kbd>e</kbd>, <kbd>d</kbd>, <kbd>c</kbd>, <kbd>?</kbd>)</dd>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
@@ -432,7 +432,7 @@ class ZigbeeMapPanel extends HTMLElement {
         let closed = false; for (const d of dds) if (d.open) { d.open = false; closed = true; }
         if (closed) { took(); return; }
         if (this._pinned) { this.hideTip(); took(); return; }
-        if (typing) return;
+        if (typing) { if (tgt === this.$('find')) { tgt.blur(); took(); } return; }   // leave the find box (the text stays, the keys work again)
         if (this.sel.size) { this.selected = null; this._selOnly = true; this.render(); took(); }
         return;
       }
