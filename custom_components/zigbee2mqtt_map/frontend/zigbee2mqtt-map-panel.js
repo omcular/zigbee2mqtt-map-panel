@@ -206,11 +206,11 @@ const STYLE = `
 
 const BAR = `
   <ha-menu-button></ha-menu-button>
-  <span id="lq" title="show only router links whose weaker direction is above this LQI · press or drag on the bar · far left: show all · hidden links still hold the layout together, so moving the bar changes what you see, not where things sit · until you move it, it follows the &quot;connected&quot; mesh number (click a mesh number in the footer to follow that one)">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
+  <span id="lq" title="show only router links whose weaker direction is above this LQI · press or drag on the bar · far left: show all · hidden links still hold the layout together, so moving the bar changes what you see, not where things sit · until you move it, it follows the &quot;connected&quot; mesh number (click a mesh number in the footer to follow that one) · keys: ← → one step, ↑ ↓ next stop (0, redundant, connected, 255)">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
   <label title="highlight every node whose name contains the text; several terms separated by commas match any of them · the devices list is filtered the same way · key: /">find <input type="text" id="find" placeholder="search term, search term, …"></label>
   <button id="join" class="primary" title="let new devices join the network for 254 s (Zigbee2MQTT closes it again by itself); click again to close now · while open: every running countdown, and a dot circles each node the network is open through · a router's card offers 'permit join here' (and 'also here' while a join runs) for joining through that router · the new device appears at the edge and is selected once its interview succeeds · administrators only">permit join</button>
-  <details id="devs" class="dd"><summary title="every device, or the selected one with its neighbours and both LQI directions · sortable by the column heads · a name selects the node, Z2M / HA open the device there">devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
-  <details id="opts" class="dd"><summary title="what is shown, how it is laid out, when the integration scans · remembered in this browser (the scan settings are the integration's entities)">options <i class="arr"></i></summary><div class="menu">
+  <details id="devs" class="dd"><summary title="every device, or the selected one with its neighbours and both LQI directions · sortable by the column heads · a name selects the node, Z2M / HA open the device there · key: D (Shift-d)">devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
+  <details id="opts" class="dd"><summary title="what is shown, how it is laid out, when the integration scans · remembered in this browser (the scan settings are the integration's entities) · key: O (Shift-o)">options <i class="arr"></i></summary><div class="menu">
     <h4>Show</h4>
     <div class="grp">
     <label title="sensors, remotes, battery devices: one link each, to their parent router · hidden ones stay in the layout, so switching them on or off moves nothing · key: E (Shift-e)"><input type="checkbox" id="showEnd"> end devices</label>
@@ -247,7 +247,7 @@ const BAR = `
     <div class="row"><button id="png" title="download the map as a picture at twice the screen resolution, with the current view and selection · device pictures are left out (browsers refuse to draw remote images into a file)">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept), lay the map out afresh and fit it to the window">reset to defaults</button></div>
     </div>
   </div></details>
-<details id="help" class="dd"><summary title="what the colours, shapes and numbers mean · the keys">help <i class="arr"></i></summary><div class="menu">
+<details id="help" class="dd"><summary title="what the colours, shapes and numbers mean · the keys · key: h">help <i class="arr"></i></summary><div class="menu">
     <h4>Mouse</h4>
     <dl>
       <dt>keys</dt><dd><table class="keys">
@@ -256,6 +256,9 @@ const BAR = `
         <tr><td><kbd>r</kbd></td><td>re-layout, forces fading in</td></tr>
         <tr><td><kbd>E</kbd></td><td>show or hide end devices (<kbd>Shift</kbd>-<kbd>e</kbd>; plain <kbd>e</kbd> is Home Assistant's entity search)</td></tr>
         <tr><td><kbd>/</kbd></td><td>jump to the find box</td></tr>
+        <tr><td><kbd>→</kbd> <kbd>←</kbd></td><td>Min LQI one step up or down</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Min LQI to the next stop: 0 · redundant · connected · 255 (a mesh stop is then followed on every new map)</td></tr>
+        <tr><td><kbd>D</kbd> <kbd>O</kbd> <kbd>h</kbd></td><td>devices, options, help (<kbd>Shift</kbd>-<kbd>d</kbd>, <kbd>Shift</kbd>-<kbd>o</kbd>; <kbd>H</kbd> works too)</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>close the card, an open menu, leave the find box, or clear the selection, in that order</td></tr>
         <tr><td><kbd>Ctrl</kbd>-<kbd>A</kbd></td><td>select every node shown; again: none · <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears</td></tr>
       </table>Home Assistant's own keys keep working here (e.g. <kbd>e</kbd>, <kbd>d</kbd>, <kbd>c</kbd>, <kbd>?</kbd>)</dd>
@@ -442,6 +445,10 @@ class ZigbeeMapPanel extends HTMLElement {
         if (k === 'r') { this.wake(0.8); e.preventDefault(); e.stopPropagation(); return; }
         if (k === 'E') { const c = this.$('showEnd'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); e.preventDefault(); e.stopPropagation(); return; }   // Shift-e: plain e is Home Assistant's entity search
         if (k === '/') { this.$('find').focus(); this.$('find').select(); e.preventDefault(); e.stopPropagation(); return; }
+        const menu = { 'D': 'devs', 'O': 'opts', 'h': 'help', 'H': 'help' }[k];   // shifted letters: the plain ones are Home Assistant's (d devices, o?, e entities)
+        if (menu) { const d = this.$(menu); d.open = !d.open; e.preventDefault(); e.stopPropagation(); return; }
+        if (k === 'ArrowRight' || k === 'ArrowLeft') { this.nudgeMinLqi(k === 'ArrowRight' ? 5 : -5); e.preventDefault(); e.stopPropagation(); return; }
+        if (k === 'ArrowUp' || k === 'ArrowDown') { this.cycleMinLqi(k === 'ArrowUp' ? 1 : -1); e.preventDefault(); e.stopPropagation(); return; }
       }
       if (typing || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
       e.preventDefault(); e.stopPropagation();
@@ -1058,6 +1065,17 @@ class ZigbeeMapPanel extends HTMLElement {
     if (!start) this._ramp--;
     this.sim.force('avoid').strength(this.avoid * (1 - this._ramp / RAMP_TICKS));
     this.sim.force('link').strength(this.sim.force('link').strength());   // d3 caches strengths: re-set so linkPull() is read again
+  }
+  // keyboard: ← → move Min LQI by one step (manual from then on); ↑ ↓ jump between the stops 0 · redundant · connected · 255
+  // (a mesh stop is followed on every new map, like clicking the footer number)
+  nudgeMinLqi(d) { const h = this.$('hide'), v = Math.max(0, Math.min(255, +h.value + d)); if (v === +h.value) return; h.value = v; lsSet(LS.hideMode, 'manual'); h.dispatchEvent(new Event('input')); }
+  cycleMinLqi(dir) {
+    const h = this.$('hide'), cur = +h.value, m = this.mesh, slider = v => Math.max(0, Math.floor((v - 1) / 5) * 5);
+    const stops = [{ v: 0 }, { v: 255 }]; if (m) { stops.push({ v: slider(m.redundant), mode: 'redundant', raw: m.redundant }); stops.push({ v: slider(m.connected), mode: 'connected', raw: m.connected }); }
+    const next = stops.filter(st => dir > 0 ? st.v > cur : st.v < cur).sort((a, b) => dir > 0 ? a.v - b.v : b.v - a.v)[0];
+    if (!next) return;
+    if (next.mode) { lsSet(LS.hideMode, next.mode); this.setMinLqi(next.raw, false, next.mode); }
+    else { h.value = next.v; lsSet(LS.hideMode, 'manual'); h.dispatchEvent(new Event('input')); }
   }
   setMinLqi(v, auto = false, mode = null) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
     const note = mode ? ` (follows ${mode})` : ' (automatic: the connected threshold)';
