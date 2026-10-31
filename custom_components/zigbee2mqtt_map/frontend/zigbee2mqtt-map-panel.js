@@ -7,6 +7,7 @@
 const VERSION = '2.2.0';
 console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
 const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan', permitJoin: 'zigbee2mqtt_map/permit_join' };
+const FIT_MS = 380;   // fit view: turn and zoom together, eased out
 const SETTLE_ALPHA = 0.06;   // a fresh layout counts as mostly settled below this simulation energy (about 1.7 s after a start at 0.5): the deferred fit happens then, not at full rest
 const RAMP_TICKS = 60;   // forces fade in over this many simulation ticks after a restart (about a second at 60 fps; see wake)
 const CHARGE_EXPONENT = 1.2;   // repulsion falls off as 1/distance^p: d3's own charge is p = 1 (a dense cluster pushes a lone node far away), 2 is inverse-square; strengths are normalised at CHARGE_REF px so the near field stays as it was
@@ -836,19 +837,26 @@ class ZigbeeMapPanel extends HTMLElement {
     const cv = this.$('canvas'), W = cv.clientWidth, H = cv.clientHeight;
     const ns = this.data.nodes.filter(n => n.x != null && !n._parked && n._drawn !== false);
     if (ns.length < 2 || W < 50 || H < 50) return;
-    const mean = f => ns.reduce((a, n) => a + f(n), 0) / ns.length;
+    const mean = f => ns.reduce((a, n) => a + f(n), 0) / ns.length, mx = mean(n => n.x), my = mean(n => n.y);
+    let da = 0;
     if (rotate && ns.length >= 3) {
-      const mx = mean(n => n.x), my = mean(n => n.y);
       const sxx = mean(n => (n.x - mx) ** 2), syy = mean(n => (n.y - my) ** 2), sxy = mean(n => (n.x - mx) * (n.y - my));
       const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);   // direction of the long axis
-      let da = (W >= H ? 0 : Math.PI / 2) - theta; while (da > Math.PI / 2) da -= Math.PI; while (da < -Math.PI / 2) da += Math.PI;   // the smaller turn (an axis has no sign)
-      if (Math.abs(da) > 0.02) { this.rotateAll(da, [mx, my]); this.savePos(); }
+      da = (W >= H ? 0 : Math.PI / 2) - theta; while (da > Math.PI / 2) da -= Math.PI; while (da < -Math.PI / 2) da += Math.PI;   // the smaller turn (an axis has no sign)
+      if (Math.abs(da) < 0.02) da = 0;
     }
-    const pad = 80;   // graph units: labels below the nodes, pictures, a little air
-    const x0 = Math.min(...ns.map(n => n.x)) - pad, x1 = Math.max(...ns.map(n => n.x)) + pad, y0 = Math.min(...ns.map(n => n.y)) - pad, y1 = Math.max(...ns.map(n => n.y)) + pad + 20;
+    // the target view is computed on the positions as they will be after the turn, so turn and zoom can run as one motion
+    const c = Math.cos(da), sn = Math.sin(da), after = n => da ? [mx + (n.x - mx) * c - (n.y - my) * sn, my + (n.x - mx) * sn + (n.y - my) * c] : [n.x, n.y];
+    const pts = ns.map(after), pad = 80;   // graph units: labels below the nodes, pictures, a little air
+    const x0 = Math.min(...pts.map(p => p[0])) - pad, x1 = Math.max(...pts.map(p => p[0])) + pad, y0 = Math.min(...pts.map(p => p[1])) - pad, y1 = Math.max(...pts.map(p => p[1])) + pad + 20;
     const k = Math.max(0.15, Math.min(6, Math.min(W / (x1 - x0), H / (y1 - y0))));
     const t = d3.zoomIdentity.translate(W / 2 - k * (x0 + x1) / 2, H / 2 - k * (y0 + y1) / 2).scale(k);
-    (animate ? this.svg.transition().duration(400) : this.svg).call(this.zoom.transform, t);
+    if (!animate) { if (da) { this.rotateAll(da, [mx, my]); this.savePos(); } this.svg.call(this.zoom.transform, t); return; }
+    let turned = 0;   // the turn is dealt out in increments along the same eased clock as the zoom
+    this.svg.interrupt('fit').transition('fit').duration(FIT_MS).ease(d3.easeCubicOut)
+      .tween('turn', () => p => { if (!da) return; const want = da * p; this.rotateAll(want - turned, [mx, my]); turned = want; })
+      .call(this.zoom.transform, t)
+      .on('end', () => { if (da) this.savePos(); });
   }
   // graph state: every node's last position (pinned ones flagged) + the zoom/pan view, so a revisit starts where you left off
   savePos() { const o = {}; if (this.data) for (const n of this.data.nodes) if (n.x != null && !n._parked) o[n.id] = [Math.round(n.x), Math.round(n.y), n.fx != null ? 1 : 0]; lsSet(LS.pos, o); }
