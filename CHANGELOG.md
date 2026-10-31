@@ -5,15 +5,17 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
-- Min LQI and the end-device switch are filters now, not layouts: links hidden by the slider stay in the physics at a fifth of their pull, hidden end devices stay in it entirely, nothing is parked by the slider, and a slider move wakes the simulation gently with only the changed links ramping their pull over a second. The arrangement you untangled survives slider drags; it still adjusts, it no longer rearranges.
-- Fixed: every wake of the physics turned the whole map a little (about 3° per re-layout with end devices in the layout). d3's link and collision forces split their push unevenly between the two nodes of a pair, which adds up to a net torque; the panel now uses its own link, collision and repulsion forces with equal and opposite pushes, and the link-avoidance force applies its full reaction. The join electron scales with the node size.
-- Node repulsion falls off as 1/distance^1.5 instead of d3's 1/distance (normalised at 100 px): clusters keep their spread, a lone node is no longer pushed across the map by a dense cluster elsewhere.
-- "fit view" (was "reset view"; key f, F without turning): turns the map so its long axis follows the window's and zooms to everything drawn. A first visit and "reset to defaults" fit by themselves, once at once and once more when the layout has settled.
-- Keys: f / F fit, r re-layout, / find (d, o and ? stay Home Assistant's own shortcuts); Ctrl-A works again next to Home Assistant's shortcut handler. Default node size 24, default spacing 0.7. Every control has a hover explainer, with its key where it has one.
+- Min LQI and the end-device switch are filters, not layouts: links hidden by the slider stay in the physics at a fifth of their pull, hidden end devices stay in it entirely, nothing is parked by the slider, and a slider move wakes the simulation gently with only the changed links ramping their pull over a second. The arrangement you untangled survives slider drags; it still adjusts, it no longer rearranges.
+- Fixed: every wake of the physics turned the whole map a little (about 3° per re-layout). d3's link and collision forces split their push unevenly between the two nodes of a pair, which adds up to a net torque; the panel now uses its own link, collision and repulsion forces with equal and opposite pushes.
+- Node repulsion falls off as 1/distance^1.5 instead of 1/distance (normalised at 100 px): clusters keep their spread, a lone node is no longer pushed across the map by a dense cluster elsewhere.
+- "fit view" (was "reset view"): turns the map so its long axis follows the window's and zooms to everything drawn, turn and zoom as one eased motion. A first visit and "reset to defaults" fit by themselves, once at once and once more when the layout has mostly settled.
+- Keys: f fit (F without turning), r re-layout, / find, E end devices, D devices list, O options, h help, ← → Min LQI by a step, ↑ ↓ Min LQI to the next stop (0, redundant, connected, 255), Esc closes the card, a menu, the find box or the selection, one per press. Home Assistant's own keys (e, d, c, ?) keep working. Every control has a hover explainer, with its key where it has one.
+- Find takes comma-separated terms, a name matches any of them; the devices list filters the same way.
 - Min LQI follows "connected" by default (was "redundant"); the routes slider is shown only while "pull routes" is on, and ticking it sets the overlay to 1.0 if it was off.
+- Defaults: node size 24, spacing 0.7. The end-device dot is 70 % larger; the join electron scales with the node size.
 - Fixed: route arrows and thick path lines lagged one selection behind.
-- The end-device dot (images off, or no picture) is 70 % larger.
 - Fixed: after a release the "panel updated" banner asked for a Home Assistant restart when a page reload was all it took.
+
 ## 2.2.0 – 2026-10-31
 
 - Permit join from the map: a toolbar button opens the network for 254 s with a countdown (click again to close), a router's card offers "permit join here" and, while a join runs, "also here" (each router keeps its own 254 s; the button lists the running countdowns), and a dot circles every node the network is open through. A pairing feed, a bubble over the map, follows the newcomer: joined → interviewing → paired or failed. Administrators only.
