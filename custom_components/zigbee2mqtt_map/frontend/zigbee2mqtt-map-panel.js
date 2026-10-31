@@ -212,7 +212,7 @@ const BAR = `
   <details id="opts" class="dd"><summary title="what is shown, how it is laid out, when the integration scans · remembered in this browser (the scan settings are the integration's entities)">options <i class="arr"></i></summary><div class="menu">
     <h4>Show</h4>
     <div class="grp">
-    <label title="sensors, remotes, battery devices: one link each, to their parent router · hidden ones stay in the layout, so switching them on or off moves nothing"><input type="checkbox" id="showEnd"> end devices</label>
+    <label title="sensors, remotes, battery devices: one link each, to their parent router · hidden ones stay in the layout, so switching them on or off moves nothing · key: e"><input type="checkbox" id="showEnd"> end devices</label>
     <label title="a ghost is an address in some router's neighbour table that is not in Zigbee2MQTT's device list: a removed device whose entries have not aged out. The devices list still shows them"><input type="checkbox" id="showGhosts"> show ghost devices</label>
     <label title="links only one side reported, or reported with LQI 0: usually a stale neighbour-table entry, drawn as a dashed grey hairline · they are not part of the mesh numbers"><input type="checkbox" id="showOne"> one-sided / stale links</label>
     <label title="when a node is selected, also reveal its one-sided (dashed) links; links Min LQI hides are always revealed for the selected node"><input type="checkbox" id="selOne"> one-sided / stale on selected node</label>
@@ -253,10 +253,11 @@ const BAR = `
         <tr><td><kbd>f</kbd></td><td>fit view: turn the map to the window and zoom to everything drawn</td></tr>
         <tr><td><kbd>F</kbd></td><td>fit view without turning</td></tr>
         <tr><td><kbd>r</kbd></td><td>re-layout, forces fading in</td></tr>
+        <tr><td><kbd>e</kbd></td><td>show or hide end devices</td></tr>
         <tr><td><kbd>/</kbd></td><td>jump to the find box</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>close the card, an open menu, or the selection, in that order</td></tr>
         <tr><td><kbd>Ctrl</kbd>-<kbd>A</kbd></td><td>select every node shown; again: none · <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears</td></tr>
-      </table>Home Assistant's own keys keep working here (e.g. <kbd>e</kbd>, <kbd>d</kbd>, <kbd>c</kbd>, <kbd>?</kbd>)</dd>
+      </table>Home Assistant's own keys keep working here (e.g. <kbd>d</kbd>, <kbd>c</kbd>, <kbd>?</kbd>); <kbd>e</kbd> is taken by the panel</dd>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
       <dt><kbd>Ctrl</kbd>-drag · middle-drag · two-finger twist</dt><dd>rotate the whole map (around the centre of the view, or between the fingers); positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
@@ -424,19 +425,21 @@ class ZigbeeMapPanel extends HTMLElement {
     this._onKey = e => {
       if (!this.isConnected || !this.data) return;
       const tgt = e.composedPath()[0], typing = tgt && (/^(INPUT|TEXTAREA|SELECT)$/.test(tgt.tagName) || tgt.isContentEditable);
-      if (e.key === 'Escape') {
-        if (this.$('side').classList.contains('show')) { this.closeSide(); e.preventDefault(); return; }
+      if (e.key === 'Escape') {   // one step per press: side panel, menu, card, selection; the handled press stops here (Home Assistant must not see it again)
+        const took = () => { e.preventDefault(); e.stopPropagation(); };
+        if (this.$('side').classList.contains('show')) { this.closeSide(); took(); return; }
         let closed = false; for (const d of dds) if (d.open) { d.open = false; closed = true; }
-        if (closed) { e.preventDefault(); return; }
-        if (this._pinned) { this.hideTip(); e.preventDefault(); return; }
+        if (closed) { took(); return; }
+        if (this._pinned) { this.hideTip(); took(); return; }
         if (typing) return;
-        if (this.sel.size) { this.selected = null; this._selOnly = true; this.render(); e.preventDefault(); }
+        if (this.sel.size) { this.selected = null; this._selOnly = true; this.render(); took(); }
         return;
       }
       if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey) {   // single keys on the map
         const k = e.key;
         if (k === 'f' || k === 'F') { this.fitView({ rotate: k === 'f' }); e.preventDefault(); e.stopPropagation(); return; }   // F: fit without turning
         if (k === 'r') { this.wake(0.8); e.preventDefault(); e.stopPropagation(); return; }
+        if (k === 'e') { const c = this.$('showEnd'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); e.preventDefault(); e.stopPropagation(); return; }   // shadows Home Assistant's entity search on this panel
         if (k === '/') { this.$('find').focus(); this.$('find').select(); e.preventDefault(); e.stopPropagation(); return; }
       }
       if (typing || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
