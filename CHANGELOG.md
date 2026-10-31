@@ -6,6 +6,11 @@ section and uses it as the GitHub release notes.
 ## Unreleased
 
 - Min LQI and the end-device switch are filters now, not layouts: links hidden by the slider stay in the physics at a fifth of their pull, hidden end devices stay in it entirely, nothing is parked by the slider, and a slider move wakes the simulation gently with only the changed links ramping their pull over a second. The arrangement you untangled survives slider drags; it still adjusts, it no longer rearranges.
+- Node repulsion falls off as 1/distance^1.5 instead of d3's 1/distance (normalised at 100 px): clusters keep their spread, a lone node is no longer pushed across the map by a dense cluster elsewhere.
+- "fit view" (was "reset view"; key f, F without turning): turns the map so its long axis follows the window's and zooms to everything drawn. A first visit and "reset to defaults" fit by themselves, once at once and once more when the layout has settled.
+- Keys: f / F fit, r re-layout, / find, ? help. Default node size 24.
+- Min LQI follows "connected" by default (was "redundant"); the routes slider is shown only while "pull routes" is on, and ticking it sets the overlay to 1.0 if it was off.
+- Fixed: route arrows and thick path lines lagged one selection behind.
 - The end-device dot (images off, or no picture) is 70 % larger.
 - Fixed: after a release the "panel updated" banner asked for a Home Assistant restart when a page reload was all it took.
 ## 2.2.0 – 2026-10-31

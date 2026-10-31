@@ -8,6 +8,8 @@ const VERSION = '2.2.0';
 console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
 const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan', permitJoin: 'zigbee2mqtt_map/permit_join' };
 const RAMP_TICKS = 60;   // forces fade in over this many simulation ticks after a restart (about a second at 60 fps; see wake)
+const CHARGE_EXPONENT = 1.2;   // repulsion falls off as 1/distance^p: d3's own charge is p = 1 (a dense cluster pushes a lone node far away), 2 is inverse-square; strengths are normalised at CHARGE_REF px so the near field stays as it was
+const CHARGE_REF = 100;
 const FADED_PULL = 0.2;   // pull of a link hidden by Min LQI, relative to a shown one (0 = the old behaviour: hidden links left the layout)
 const JOIN_SECONDS = 254;   // Zigbee2MQTT's maximum; it closes the network itself when the time is up
 const mmss = ms => { const t = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
@@ -217,18 +219,18 @@ const BAR = `
     <label>show names for <select id="names"><option value="none">none</option><option value="routers" selected>routers only</option><option value="all">all devices</option></select></label>
     <label><input type="checkbox" id="showLql"> LQI labels</label>
     <label title="the info box that appears while the mouse rests on a node or a link; off: only the card a click opens"><input type="checkbox" id="hoverTips" checked> hover popups</label>
-    <label title="draw what the routing tables say: links that carry active routes thicker (the more routes, the thicker) with an arrow at the end the traffic goes to; a selected router shows its path to the coordinator extra thick. 0: off · higher: thickness grows faster with the number of routes. Needs a scan with &quot;routes on pull&quot;">routes <input type="range" id="showRoutes" min="0" max="3" value="0" step="0.1"> <span id="showRoutesV">off</span></label>
+    <label id="routesCtl" title="draw what the routing tables say: links that carry active routes thicker (the more routes, the thicker) with an arrow at the end the traffic goes to; a selected router shows its path to the coordinator extra thick. 0: off · higher: thickness grows faster with the number of routes. Needs a scan with &quot;routes on pull&quot;">routes <input type="range" id="showRoutes" min="0" max="3" value="0" step="0.1"> <span id="showRoutesV">off</span></label>
     <div id="routesNote" class="note"></div>
     <label title="device photos from zigbee2mqtt.io (the browser fetches them, so this needs internet); nodes without a picture keep the generic shape"><input type="checkbox" id="showImg" checked> device images</label>
     </div>
     <h4>Layout</h4>
     <div class="grp">
-    <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds)">node size <input type="range" id="imgsize" min="16" max="64" value="30" step="2"> <span id="imgsizeV">30</span></label>
+    <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds)">node size <input type="range" id="imgsize" min="16" max="64" value="24" step="2"> <span id="imgsizeV">24</span></label>
     <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="0.5" step="0.05"> <span id="springV">0.5</span></label>
     <label title="push nodes off links they are not part of (and bend those links away) · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
     <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> dragging pins nodes</label>
-    <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview">reset view</button></div>
+    <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview" title="turn the map to the shape of the window and zoom so everything drawn is in view (Shift-click: zoom only, no turning) · key: f">fit view</button></div>
     </div>
     <h4>Scans</h4>
     <div class="grp">
@@ -246,6 +248,7 @@ const BAR = `
 <details id="help" class="dd"><summary>help <i class="arr"></i></summary><div class="menu">
     <h4>Mouse</h4>
     <dl>
+      <dt>keys</dt><dd><kbd>f</kbd> fit view (turn to the window and zoom to everything) · <kbd>F</kbd> fit without turning · <kbd>r</kbd> re-layout · <kbd>/</kbd> find · <kbd>?</kbd> this help · <kbd>Esc</kbd> close card, menu or selection · <kbd>Ctrl</kbd>-<kbd>A</kbd> select all shown</dd>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
       <dt><kbd>Ctrl</kbd>-drag · middle-drag · two-finger twist</dt><dd>rotate the whole map (around the centre of the view, or between the fingers); positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
@@ -274,7 +277,7 @@ const BAR = `
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
       <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "pull routes" also reads routing tables (slower, much slower on the first pull). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>computed by the integration after every scan and also exposed as two sensors (a history graph of them is the mesh's health over time). C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
-      <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Devices left without a visible link are lined up along the bottom of the screen. Until you move it, it follows the "redundant" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
+      <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Hidden links still hold the layout together at a fraction of their pull, so moving the bar changes what you see, not where things sit; devices without any link at all are lined up along the bottom of the screen. Until you move it, it follows the "connected" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text</dd>
       <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown; "also here" opens that router too (each router keeps its own 254 s; the button lists every running countdown, soonest first); a dot circles every node the network is open through, "stop" closes the network everywhere. A join opened from the Zigbee2MQTT frontend shows without the router names. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
       <dt>pairing feed</dt><dd>a bubble over the map: joined → interviewing → paired (or failed) → the device appears on the map at once (parked at the edge until a scan wires it) and is selected, so its card offers the Z2M link for naming it; renames and removals in Zigbee2MQTT reach the map the same way, without a scan</dd>
@@ -288,6 +291,32 @@ const BAR = `
 // d3 force: keep nodes off links they do not belong to. A node closer than its clearance to the middle part of a foreign
 // link is pushed out along the link's normal, and the link's two ends get the opposite push (split by where the node sits),
 // so the link bends away as much as the node moves. O(nodes x links) per tick, fine for a few hundred of each.
+// d3 force: node repulsion with a steeper fall-off than d3's forceManyBody (which is 1/r). Pairwise, O(n²) per tick: a
+// Zigbee mesh has tens of nodes, not thousands, so a quadtree would buy nothing. Strength is per node, as in d3, and is
+// normalised so that at `ref` px the push equals d3's for the same strength: closer pairs push harder than before, farther
+// pairs weaker, and the exponent sets how much.
+function forceRepel(exponent = 1.5, ref = 100) {
+  let nodes = [], strengthFn = () => -30, strengths = [];
+  const norm = Math.pow(ref, exponent - 1), rmin = 12;   // rmin: no singularity when two nodes land on each other (collide separates them)
+  function force(alpha) {
+    const n = nodes.length;
+    for (let i = 0; i < n; i++) {
+      const a = nodes[i], sa = strengths[i];
+      for (let j = i + 1; j < n; j++) {
+        const b = nodes[j], sb = strengths[j];
+        let dx = b.x - a.x, dy = b.y - a.y, r = Math.hypot(dx, dy);
+        if (r < rmin) { if (r === 0) { dx = 0.01; dy = 0.01; } r = rmin; }
+        const f = alpha * norm / Math.pow(r, exponent + 1);   // × displacement below = unit vector × 1/r^exponent
+        a.vx += dx * f * sb; a.vy += dy * f * sb;   // strengths are negative: a moves away from b, b away from a
+        b.vx -= dx * f * sa; b.vy -= dy * f * sa;
+      }
+    }
+  }
+  force.initialize = ns => { nodes = ns; strengths = nodes.map(strengthFn); };
+  force.strength = fn => { strengthFn = typeof fn === 'function' ? fn : () => fn; strengths = nodes.map(strengthFn); return force; };
+  return force;
+}
+
 function forceAvoidLinks() {
   let nodes = [], links = [], strength = 1, clearance = d => 30;
   function force(alpha) {
@@ -395,6 +424,13 @@ class ZigbeeMapPanel extends HTMLElement {
         if (typing) return;
         if (this.sel.size) { this.selected = null; this._selOnly = true; this.render(); e.preventDefault(); }
         return;
+      }
+      if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey) {   // single keys on the map
+        const k = e.key;
+        if (k === 'f' || k === 'F') { this.fitView({ rotate: k === 'f' }); e.preventDefault(); return; }   // F: fit without turning
+        if (k === 'r') { this.wake(0.8); e.preventDefault(); return; }
+        if (k === '/') { this.$('find').focus(); this.$('find').select(); e.preventDefault(); return; }
+        if (k === '?') { this.$('help').open = !this.$('help').open; e.preventDefault(); return; }
       }
       if (typing || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
       e.preventDefault();
@@ -637,11 +673,15 @@ class ZigbeeMapPanel extends HTMLElement {
       mk('connected', mesh.connected, tipC); st.append(', '); mk('redundant', mesh.redundant, tipR);
     }
     if (!(seeded > 0)) this.warm = false;
-    // a first look should show the mesh, not every marginal link: until the user picks a Min LQI, follow the "redundant"
-    // threshold (the links below it are the ones nothing depends on)
-    const mode = this.hideMode();
-    if (mesh && mode !== 'manual' && mesh[mode === 'connected' ? 'connected' : 'redundant'] >= 0) this.setMinLqi(mesh[mode === 'connected' ? 'connected' : 'redundant'], true, mode);
+    // a first look should show the mesh, not every marginal link: until the user picks a Min LQI, follow the "connected"
+    // threshold (every router still reaches the coordinator over the links shown)
+    const mode = this.hideMode(), thr = mode === 'redundant' ? 'redundant' : 'connected';
+    if (mesh && mode !== 'manual' && mesh[thr] >= 0) this.setMinLqi(mesh[thr], true, mode);
     this.render();
+    if (firstMap && !lsGet(LS.view, null)) {   // nothing saved for this browser: show the whole map, turned to the window when the layout is fresh
+      const fresh = !(seeded > 0); this.fitView({ rotate: fresh, animate: false });
+      this._fitOnSettle = { rotate: fresh };   // and once more when the simulation has settled, since a fresh layout keeps moving for seconds
+    }
   }
 
   initGraph() {
@@ -649,7 +689,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.svg = d3.select($('canvas').querySelector(':scope > svg')); this.tip = d3.select($('tip'));
     this.g = this.svg.append('g'); this.gl = this.g.append('g'); this.glq = this.g.append('g'); this.gn = this.g.append('g');
     // Ctrl is excluded on purpose: Ctrl-wheel stays browser zoom, Ctrl-drag rotates (below); middle button rotates too
-    this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { this._zoomT = e.transform; this.g.attr('transform', e.transform); this.dockParked(); this.draw(); }).on('end', () => this.saveView()).filter(e => (e.type === 'wheel' || !e.target.closest?.('.node')) && !e.button && !e.ctrlKey);   // nodes are for dragging, but the wheel zooms everywhere
+    this.zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => { if (e.sourceEvent) this._fitOnSettle = null; /* the user took over the view: no fit behind their back */ this._zoomT = e.transform; this.g.attr('transform', e.transform); this.dockParked(); this.draw(); }).on('end', () => this.saveView()).filter(e => (e.type === 'wheel' || !e.target.closest?.('.node')) && !e.button && !e.ctrlKey);   // nodes are for dragging, but the wheel zooms everywhere
     this.svg.call(this.zoom);
     const svgEl = this.svg.node();
     svgEl.addEventListener('mousedown', e => {
@@ -690,9 +730,10 @@ class ZigbeeMapPanel extends HTMLElement {
     const dist = l => { const k = this.lqilen, end = l.s.isEnd || l.t.isEnd; return Math.max(end ? 25 : 50, end ? ((60 - 20 * k) + 60 * k * (1 - q(l))) : ((210 - 90 * k) + 180 * k * (1 - q(l)))) * this.spring; };
     const charge = d => (d.isEnd ? -150 : -1100) * this.spring;
     this.sim = d3.forceSimulation().force('link', d3.forceLink().id(d => d.id).distance(dist).strength(l => this.linkPull(l)))
-      .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
+      .force('charge', forceRepel(CHARGE_EXPONENT, CHARGE_REF).strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
-      .on('tick', () => { this.tickRamp(); this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
+      .on('tick', () => { this.tickRamp(); this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); })
+      .on('end', () => { this.savePos(); if (this._fitOnSettle) { const o = this._fitOnSettle; this._fitOnSettle = null; this.fitView(o); } });
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
     const PREFS = ['swapBars', 'showRoutes', 'hoverTips', 'showGhosts', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
@@ -700,13 +741,16 @@ class ZigbeeMapPanel extends HTMLElement {
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
     if (+$('hide').value < 0) $('hide').value = 0;   // older stored prefs had a two-sided slider
     $('hideV').textContent = hideLabel(+$('hide').value);
-    this.imgsize = +$('imgsize').value || 30; $('imgsizeV').textContent = this.imgsize;
+    this.imgsize = +$('imgsize').value || 24; $('imgsizeV').textContent = this.imgsize;
     $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); this.draw(); };
     const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
     $('showEnd').onchange = () => { this._filterOnly = true; this.render(); }; $('showGhosts').onchange = () => this.render();
     const routesLabel = () => { const v = +$('showRoutes').value; $('showRoutesV').textContent = v > 0 ? v.toFixed(1) : 'off'; };
-    $('showRoutes').oninput = () => { routesLabel(); this.render(); }; routesLabel(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
+    $('showRoutes').oninput = () => { routesLabel(); this.render(); }; routesLabel();
+    const syncRoutesCtl = () => { $('routesCtl').style.display = $('routes').checked ? '' : 'none'; };   // the overlay slider only makes sense with routes in the scan
+    $('routes').addEventListener('change', () => { if ($('routes').checked && +$('showRoutes').value === 0) { $('showRoutes').value = 1; $('showRoutes').dispatchEvent(new Event('input')); } syncRoutesCtl(); });   // turning routes on with the overlay off: show them
+    this._syncRoutesCtl = syncRoutesCtl; $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => { this.glq.selectAll('g.lql').style('display', $('showLql').checked ? null : 'none'); this.sizeLabels(); };
     $('names').onchange = () => this.applyNames();
     $('showImg').onchange = () => { const on = $('showImg').checked; this.gn.selectAll('image.img, circle.imgbg').style('display', on ? null : 'none'); this.gn.classed('imgs', on); this.applyImgSize(); this.draw(); };
@@ -740,8 +784,8 @@ class ZigbeeMapPanel extends HTMLElement {
     $('swapBars').addEventListener('change', applySwap); applySwap();
     $('find').oninput = () => { this.applySel(); if ($('devs').open) this.fillDevices(); };
     $('unpin').onclick = () => { if (!this.data) return; for (const n of this.data.nodes) n.fx = n.fy = null; this.savePos(); this.sim.alpha(0.6).restart(); this.draw(); };
-    $('relayout').onclick = () => this.sim.alpha(0.8).restart();
-    $('resetview').onclick = () => { this.svg.transition().duration(300).call(this.zoom.transform, d3.zoomIdentity); };
+    $('relayout').onclick = () => this.wake(0.8);
+    $('resetview').onclick = e => this.fitView({ rotate: !e.shiftKey });
     $('png').onclick = () => this.savePng();
     $('resetall').onclick = () => {
       this._devSort = null;
@@ -761,6 +805,28 @@ class ZigbeeMapPanel extends HTMLElement {
       if (n.vx) { const vx = n.vx, vy = n.vy || 0; n.vx = vx * c - vy * s; n.vy = vx * s + vy * c; }
     }
     this.draw();
+  }
+  // fit the drawn graph into the window: optionally turn it so its long axis follows the window's long axis (principal axis of
+  // the node positions; pins and velocities turn with it, as with a manual rotation), then zoom and pan so the bounding box
+  // of the drawn, undocked nodes fills the canvas with room for labels
+  fitView({ rotate = false, animate = true } = {}) {
+    if (!this.data || !this.svg) return;
+    const cv = this.$('canvas'), W = cv.clientWidth, H = cv.clientHeight;
+    const ns = this.data.nodes.filter(n => n.x != null && !n._parked && n._drawn !== false);
+    if (ns.length < 2 || W < 50 || H < 50) return;
+    const mean = f => ns.reduce((a, n) => a + f(n), 0) / ns.length;
+    if (rotate && ns.length >= 3) {
+      const mx = mean(n => n.x), my = mean(n => n.y);
+      const sxx = mean(n => (n.x - mx) ** 2), syy = mean(n => (n.y - my) ** 2), sxy = mean(n => (n.x - mx) * (n.y - my));
+      const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);   // direction of the long axis
+      let da = (W >= H ? 0 : Math.PI / 2) - theta; while (da > Math.PI / 2) da -= Math.PI; while (da < -Math.PI / 2) da += Math.PI;   // the smaller turn (an axis has no sign)
+      if (Math.abs(da) > 0.02) { this.rotateAll(da, [mx, my]); this.savePos(); }
+    }
+    const pad = 80;   // graph units: labels below the nodes, pictures, a little air
+    const x0 = Math.min(...ns.map(n => n.x)) - pad, x1 = Math.max(...ns.map(n => n.x)) + pad, y0 = Math.min(...ns.map(n => n.y)) - pad, y1 = Math.max(...ns.map(n => n.y)) + pad + 20;
+    const k = Math.max(0.15, Math.min(6, Math.min(W / (x1 - x0), H / (y1 - y0))));
+    const t = d3.zoomIdentity.translate(W / 2 - k * (x0 + x1) / 2, H / 2 - k * (y0 + y1) / 2).scale(k);
+    (animate ? this.svg.transition().duration(400) : this.svg).call(this.zoom.transform, t);
   }
   // graph state: every node's last position (pinned ones flagged) + the zoom/pan view, so a revisit starts where you left off
   savePos() { const o = {}; if (this.data) for (const n of this.data.nodes) if (n.x != null && !n._parked) o[n.id] = [Math.round(n.x), Math.round(n.y), n.fx != null ? 1 : 0]; lsSet(LS.pos, o); }
@@ -828,6 +894,7 @@ class ZigbeeMapPanel extends HTMLElement {
     lm.select('path.arrS').attr('fill', color).style('display', l => ro && l.rVia?.has(l.s.id) ? null : 'none');
     lm.select('path.arrT').attr('fill', color).style('display', l => ro && l.rVia?.has(l.t.id) ? null : 'none');
     $('routesNote').textContent = ro && !this._hasRoutes ? 'this map has no routes: scan with "routes on pull"' : '';
+    this._syncRoutesCtl?.();
     lm.select('line.hit')
       .on('mouseenter', (e, l) => this._pinned || !$('hoverTips').checked || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
         esc(`${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})`) + (l.routes.length ? routesHtml(l) : ''), true))
@@ -896,7 +963,7 @@ class ZigbeeMapPanel extends HTMLElement {
   // image, backing disc, label offset and collision radius follow the image-size slider
   applyImgSize() {
     if (!this.gn) return;
-    const on = this.$('showImg').checked, S0 = this.imgsize || 30;
+    const on = this.$('showImg').checked, S0 = this.imgsize || 24;
     this.gn.selectAll('g.node').each(function (d) {
       const S = d.isEnd ? Math.round(S0 * 0.67) : S0, r = S / 2 + 6, g = d3.select(this), has = !!this.querySelector('image.img');
       g.select('image.img').attr('width', S).attr('height', S).attr('x', -S / 2).attr('y', -S / 2);
@@ -953,7 +1020,7 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   // labels: none / routers (coordinator included) / all
   // auto: set by the panel (no render here, the caller renders) · otherwise a user choice, remembered
-  // 'manual' (bar dragged) · 'connected' / 'redundant' (mesh number clicked: re-applied on every new map) · null: automatic = redundant
+  // 'manual' (bar dragged) · 'connected' / 'redundant' (mesh number clicked: re-applied on every new map) · null: automatic = connected
   hideMode() { const m = lsGet(LS.hideMode, null); return m || (lsGet(LS.hideSet, false) ? 'manual' : null); }
   // auto: applied by the panel on a new map (no render here, the caller renders) · otherwise a click on a mesh number
   // a restart whose forces fade in over RAMP_MS: the first ticks move nodes gently instead of yanking them into the new
@@ -978,7 +1045,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.sim.force('link').strength(this.sim.force('link').strength());   // d3 caches strengths: re-set so linkPull() is read again
   }
   setMinLqi(v, auto = false, mode = null) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
-    const note = mode ? ` (follows ${mode})` : ' (automatic: the redundant threshold)';
+    const note = mode ? ` (follows ${mode})` : ' (automatic: the connected threshold)';
     if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + note; this.updLegendMk?.(); return; }
     h.dispatchEvent(new Event('input')); this.$('hideV').textContent = hideLabel(+h.value) + note; this.updLegendMk?.(); }
   applyNames() {
@@ -1067,6 +1134,7 @@ class ZigbeeMapPanel extends HTMLElement {
     this.gn.selectAll('g.node').classed('dim', d => active && !active.has(d.id)).classed('sel', d => this.sel.has(d) || (matches && matches.has(d.id) && !sel));
     this.gl.selectAll('g.link').classed('dim', l => !linkOn(l));
     this.glq.selectAll('g.lql').classed('dim', l => !linkOn(l));
+    this.draw();   // arrow size and line ends depend on the on-path class set just now; a selection change restarts no physics, so nothing else would redraw
     if (this.$('devs')?.open) this.fillDevices();
   }
   // keep a dropdown inside the panel: as wide as it wants up to the panel width (minus a margin), shifted left when it would
