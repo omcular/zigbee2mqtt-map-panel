@@ -207,8 +207,8 @@ const BAR = `
   <span id="lq" title="show only router links whose weaker direction is above this LQI · press or drag on the bar · far left: show all · hidden links still hold the layout together, so moving the bar changes what you see, not where things sit · until you move it, it follows the &quot;connected&quot; mesh number (click a mesh number in the footer to follow that one)">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
   <label title="highlight every node whose name contains the text; the devices list is filtered the same way · key: /">find <input type="text" id="find" placeholder="node name…"></label>
   <button id="join" class="primary" title="let new devices join the network for 254 s (Zigbee2MQTT closes it again by itself); click again to close now · while open: every running countdown, and a dot circles each node the network is open through · a router's card offers 'permit join here' (and 'also here' while a join runs) for joining through that router · the new device appears at the edge and is selected once its interview succeeds · administrators only">permit join</button>
-  <details id="devs" class="dd"><summary title="every device, or the selected one with its neighbours and both LQI directions · sortable by the column heads · a name selects the node, Z2M / HA open the device there · key: d">devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
-  <details id="opts" class="dd"><summary title="what is shown, how it is laid out, when the integration scans · remembered in this browser (the scan settings are the integration's entities) · key: o">options <i class="arr"></i></summary><div class="menu">
+  <details id="devs" class="dd"><summary title="every device, or the selected one with its neighbours and both LQI directions · sortable by the column heads · a name selects the node, Z2M / HA open the device there">devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
+  <details id="opts" class="dd"><summary title="what is shown, how it is laid out, when the integration scans · remembered in this browser (the scan settings are the integration's entities)">options <i class="arr"></i></summary><div class="menu">
     <h4>Show</h4>
     <div class="grp">
     <label title="sensors, remotes, battery devices: one link each, to their parent router · hidden ones stay in the layout, so switching them on or off moves nothing"><input type="checkbox" id="showEnd"> end devices</label>
@@ -226,7 +226,7 @@ const BAR = `
     <h4>Layout</h4>
     <div class="grp">
     <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds) · zoom scales the whole map, this only the nodes against the links and labels">node size <input type="range" id="imgsize" min="16" max="64" value="24" step="2"> <span id="imgsizeV">24</span></label>
-    <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="0.5" step="0.05"> <span id="springV">0.5</span></label>
+    <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="0.7" step="0.05"> <span id="springV">0.7</span></label>
     <label title="push nodes off drawn links they are not part of (and bend those links away); acts only within a small clearance around a link · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
     <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> dragging pins nodes</label>
@@ -245,10 +245,10 @@ const BAR = `
     <div class="row"><button id="png" title="download the map as a picture at twice the screen resolution, with the current view and selection · device pictures are left out (browsers refuse to draw remote images into a file)">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept), lay the map out afresh and fit it to the window">reset to defaults</button></div>
     </div>
   </div></details>
-<details id="help" class="dd"><summary title="what the colours, shapes and numbers mean · the keys · key: ?">help <i class="arr"></i></summary><div class="menu">
+<details id="help" class="dd"><summary title="what the colours, shapes and numbers mean · the keys">help <i class="arr"></i></summary><div class="menu">
     <h4>Mouse</h4>
     <dl>
-      <dt>keys</dt><dd><kbd>f</kbd> fit view (turn to the window and zoom to everything) · <kbd>F</kbd> fit without turning · <kbd>r</kbd> re-layout · <kbd>/</kbd> find · <kbd>o</kbd> options · <kbd>d</kbd> devices · <kbd>?</kbd> this help · <kbd>Esc</kbd> close card, menu or selection · <kbd>Ctrl</kbd>-<kbd>A</kbd> select all shown</dd>
+      <dt>keys</dt><dd><kbd>f</kbd> fit view (turn to the window and zoom to everything) · <kbd>F</kbd> fit without turning · <kbd>r</kbd> re-layout · <kbd>/</kbd> find · <kbd>Esc</kbd> close card, menu or selection · <kbd>Ctrl</kbd>-<kbd>A</kbd> select all shown</dd>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
       <dt><kbd>Ctrl</kbd>-drag · middle-drag · two-finger twist</dt><dd>rotate the whole map (around the centre of the view, or between the fingers); positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
@@ -384,7 +384,7 @@ class ZigbeeMapPanel extends HTMLElement {
   lastRequestMs() { const t = this.S.last_request ? Date.parse(this.S.last_request) : NaN; return Number.isFinite(t) ? t : 0; }
 
   _join = { all: 0, via: {} };   // see joinLink
-  connectedCallback() { if (!this._built) { this._built = true; this.build(); } else { if (this._onKey) window.addEventListener('keydown', this._onKey); this.watchStore(); if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000); } }   // HA may re-attach the same element
+  connectedCallback() { if (!this._built) { this._built = true; this.build(); } else { if (this._onKey) window.addEventListener('keydown', this._onKey, true); this.watchStore(); if (!this._liveT) this._liveT = setInterval(() => this.liveTick(), 15000); } }   // HA may re-attach the same element
 
   async build() {
     const r = this.shadowRoot;
@@ -427,19 +427,17 @@ class ZigbeeMapPanel extends HTMLElement {
       }
       if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey) {   // single keys on the map
         const k = e.key;
-        if (k === 'f' || k === 'F') { this.fitView({ rotate: k === 'f' }); e.preventDefault(); return; }   // F: fit without turning
-        if (k === 'r') { this.wake(0.8); e.preventDefault(); return; }
-        if (k === '/') { this.$('find').focus(); this.$('find').select(); e.preventDefault(); return; }
-        const menu = { '?': 'help', 'o': 'opts', 'd': 'devs' }[k];   // the toggle listener closes the others and places the menu
-        if (menu) { const d = this.$(menu); d.open = !d.open; e.preventDefault(); return; }
+        if (k === 'f' || k === 'F') { this.fitView({ rotate: k === 'f' }); e.preventDefault(); e.stopPropagation(); return; }   // F: fit without turning
+        if (k === 'r') { this.wake(0.8); e.preventDefault(); e.stopPropagation(); return; }
+        if (k === '/') { this.$('find').focus(); this.$('find').select(); e.preventDefault(); e.stopPropagation(); return; }
       }
       if (typing || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
-      e.preventDefault();
+      e.preventDefault(); e.stopPropagation();
       if (e.shiftKey) this.selected = null;
       else { const shown = new Set(); this.gn.selectAll('g.node').each(d => shown.add(d)); this.sel = [...shown].every(n => this.sel.has(n)) ? new Set() : shown; }
       this._selOnly = true; this.render();
     };
-    window.addEventListener('keydown', this._onKey);
+    window.addEventListener('keydown', this._onKey, true);   // capture: before Home Assistant's own shortcut handler, which otherwise swallows Ctrl-A
     const dds = [this.$('devs'), this.$('opts'), this.$('help')];
     // a click on the map while a dropdown is open only closes it: the press, the click and a double-click that start outside are eaten
     // in the capture phase, so the map underneath neither deselects nor drags, pans or pins
@@ -535,7 +533,7 @@ class ZigbeeMapPanel extends HTMLElement {
     scan.tick = setInterval(() => { st.textContent = `scan running (${kind})… ${Math.round((Date.now() - t0) / 1000)} s${scan.progress} (leaving the page is fine, the result is kept by Home Assistant)`; }, 1000);
   }
   endScan() { if (!this._scan) return; clearInterval(this._scan.tick); this._scan = null; this.$('pull').disabled = false; }
-  disconnectedCallback() { window.removeEventListener('keydown', this._onKey); clearInterval(this._liveT); this._liveT = null; clearInterval(this._joinT); this._joinT = null; clearTimeout(this._feedT); this._feedT = null; clearInterval(this._ingressT); this._ingressT = null; this._ingress = null; this.savePos(); this.saveView(); lsSet(LS.sel, [...this.sel].map(n => n.id)); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
+  disconnectedCallback() { window.removeEventListener('keydown', this._onKey, true); clearInterval(this._liveT); this._liveT = null; clearInterval(this._joinT); this._joinT = null; clearTimeout(this._feedT); this._feedT = null; clearInterval(this._ingressT); this._ingressT = null; this._ingress = null; this.savePos(); this.saveView(); lsSet(LS.sel, [...this.sel].map(n => n.id)); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
 
   // permit join: the request goes to Zigbee2MQTT through the integration; the countdown comes back in the status events
   // (permit_join_end from Zigbee2MQTT's bridge info), so a reload or a second browser shows the same clock
@@ -722,7 +720,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('canvas').addEventListener('touchend', e => { if (e.touches.length < 2) { if (tTurned) { this._rotated = true; this.savePos(); } ta0 = null; tTurned = false; } }, { passive: true, capture: true });
     const v = lsGet(LS.view, null); if (v && v.k > 0) this.svg.call(this.zoom.transform, d3.zoomIdentity.translate(v.x, v.y).scale(v.k));
     this.svg.on('click', () => { if (this._rotated) { this._rotated = false; return; } this.hideTip(); if (this.sel.size) { this.selected = null; this._selOnly = true; this.render(); } else this.applySel(); });
-    this.spring = Math.min(2, +lsGet(LS.spring, 0.5) || 0.5);
+    this.spring = Math.min(2, +lsGet(LS.spring, 0.7) || 0.7);
     // rest length follows link quality (weaker direction): LQI 255 -> short, LQI 0 / one-sided -> long
     const q = l => (l.oneSided || !(l.min >= 0) || l.min > 255) ? 0 : l.min / 255;
     this.lqilen = Math.min(3, +lsGet(LS.lqilen, 1)); if (!(this.lqilen >= 0)) this.lqilen = 1;
