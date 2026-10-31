@@ -859,12 +859,12 @@ class ZigbeeMapPanel extends HTMLElement {
       .on('dblclick', (e, d) => { e.stopPropagation(); clearTimeout(self._clickT); if (d.fx != null) { d.fx = d.fy = null; self.sim.alpha(0.3).restart(); } else { d.fx = d.x; d.fy = d.y; } self.savePos(); self.draw(); })
       .on('mouseenter', (e, d) => { if (!this._pinned && $('hoverTips').checked) this.showTip(e, this.nodeTipHtml(d), true); })
       .on('mousemove', e => { if (!this._pinned) this.moveTip(e); }).on('mouseleave', () => { if (!this._pinned) this.hideTip(); });
-    ne.append('circle').attr('class', 'halo').attr('r', d => d.type === 'Coordinator' ? 22 : d.isEnd ? 11 : 19);
-    ne.append('circle').attr('class', 'ring').attr('r', d => d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12).attr('fill', 'none').attr('stroke', 'none').attr('stroke-width', 2);
+    ne.append('circle').attr('class', 'halo').attr('r', d => d.type === 'Coordinator' ? 22 : d.isEnd ? 14 : 19);
+    ne.append('circle').attr('class', 'ring').attr('r', d => d.type === 'Coordinator' ? 15 : d.isEnd ? 9 : 12).attr('fill', 'none').attr('stroke', 'none').attr('stroke-width', 2);
     ne.each(function (d) {
       const s = d3.select(this);
       if (d.type === 'Coordinator') s.append('circle').attr('class', 'shape').attr('r', 11).attr('fill', 'var(--yellow)').attr('stroke', '#000');
-      else if (d.isEnd) s.append('circle').attr('class', 'shape').attr('r', 4).attr('fill', '#9aa3b2').attr('stroke', '#000');
+      else if (d.isEnd) s.append('circle').attr('class', 'shape').attr('r', 7).attr('fill', '#9aa3b2').attr('stroke', '#000');
       else s.append('rect').attr('class', 'shape').attr('x', -8).attr('y', -8).attr('width', 16).attr('height', 16).attr('rx', 3).attr('fill', 'var(--blue)').attr('stroke', '#000');
     });
     const withImg = ne.filter(d => d.type !== 'Coordinator' && imgUrl(d.model)).classed('hasimg', true);
@@ -874,7 +874,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .on('error', function () { const g = this.parentNode; this.remove(); g.querySelector('circle.imgbg')?.remove(); g.classList.remove('hasimg'); d3.select(g).select('text').attr('dy', g.__data__.isEnd ? 14 : 22); g.__data__._r = g.__data__.isEnd ? 7 : 12; });
     ne.append('g').attr('class', 'orbit').append('circle').attr('class', 'dot').attr('r', 7.8)
       .each(function () { const a = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform'); a.setAttribute('attributeName', 'transform'); a.setAttribute('type', 'rotate'); a.setAttribute('from', '0 0 0'); a.setAttribute('to', '360 0 0'); a.setAttribute('dur', '1.6s'); a.setAttribute('repeatCount', 'indefinite'); this.parentNode.appendChild(a); });   // an electron around a node open for joining
-    ne.append('text').attr('dy', d => d.isEnd ? 14 : 22).attr('text-anchor', 'middle');
+    ne.append('text').attr('dy', d => d.isEnd ? 17 : 22).attr('text-anchor', 'middle');
     // labels follow renames: rewrite the text whenever the node's name differs from what is drawn (covers new nodes too)
     this.gn.selectAll('g.node').each(function (d) { const t = this.querySelector('text'); if (t.__label !== d.name) { t.__label = d.name; wrapLabel(t, d.name, d.isEnd ? 90 : 100); } });
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale).classed('removed', d => d.removed);
@@ -903,11 +903,11 @@ class ZigbeeMapPanel extends HTMLElement {
       g.select('circle.imgbg').attr('r', r);
       // without a picture the generic shape scales with the same slider (30 = the original size)
       const f = S0 / 30, shape = g.select('.shape');
-      if (d.type === 'Coordinator') shape.attr('r', 11 * f); else if (d.isEnd) shape.attr('r', 4 * f); else shape.attr('x', -8 * f).attr('y', -8 * f).attr('width', 16 * f).attr('height', 16 * f).attr('rx', 3 * f);
-      g.select('text').attr('dy', has && on ? r + 11 : (d.isEnd ? 7 : 11) * f + 10);
-      d._r = has && on ? r + 1 : (d.type === 'Coordinator' ? 14 : d.isEnd ? 7 : 12) * f;   // where this node's own links end
+      if (d.type === 'Coordinator') shape.attr('r', 11 * f); else if (d.isEnd) shape.attr('r', 7 * f); else shape.attr('x', -8 * f).attr('y', -8 * f).attr('width', 16 * f).attr('height', 16 * f).attr('rx', 3 * f);
+      g.select('text').attr('dy', has && on ? r + 11 : (d.isEnd ? 9 : 11) * f + 10);
+      d._r = has && on ? r + 1 : (d.type === 'Coordinator' ? 14 : d.isEnd ? 9 : 12) * f;   // where this node's own links end
       // the stale ring and the pin halo follow the image size, otherwise they sit inside a large picture
-      const ringR = has && on ? r : (d.type === 'Coordinator' ? 15 : d.isEnd ? 7 : 12) * f;
+      const ringR = has && on ? r : (d.type === 'Coordinator' ? 15 : d.isEnd ? 9 : 12) * f;
       g.select('circle.ring').attr('r', ringR); g.select('circle.halo').attr('r', ringR + 7);
       g.select('g.orbit circle.dot').attr('cx', ringR);   // the electron rides on the selection ring
     });

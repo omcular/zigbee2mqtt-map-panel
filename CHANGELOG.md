@@ -6,6 +6,7 @@ section and uses it as the GitHub release notes.
 ## Unreleased
 
 - Min LQI and the end-device switch are filters now, not layouts: links hidden by the slider stay in the physics at a fifth of their pull, hidden end devices stay in it entirely, nothing is parked by the slider, and a slider move wakes the simulation gently with only the changed links ramping their pull over a second. The arrangement you untangled survives slider drags; it still adjusts, it no longer rearranges.
+- The end-device dot (images off, or no picture) is 70 % larger.
 - Fixed: after a release the "panel updated" banner asked for a Home Assistant restart when a page reload was all it took.
 ## 2.2.0 – 2026-10-31
 
