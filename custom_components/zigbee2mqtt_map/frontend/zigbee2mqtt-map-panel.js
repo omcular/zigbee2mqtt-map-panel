@@ -132,6 +132,7 @@ const STYLE = `
   details.dd .menu h4:first-child { margin-top:0; }
   details.dd .menu .grp { display:flex; flex-direction:column; gap:8px; margin-left:14px; }
   details#help p.ver { margin:8px 0 0; color:var(--muted); font-size:11px; }
+  details#help table.keys { border-collapse:collapse; margin:2px 0 4px; } details#help table.keys td { padding:1px 10px 1px 0; vertical-align:top; white-space:nowrap; } details#help table.keys td:last-child { white-space:normal; }
   details#help kbd { font:inherit; padding:0 4px; border:1px solid var(--divider-color,#555); border-radius:3px; }
   details#devs .menu { --mw:640px; max-height:min(var(--availH,70vh), 640px); gap:4px; }
   details#devs td.name { white-space:normal; min-width:90px; }
@@ -248,7 +249,14 @@ const BAR = `
 <details id="help" class="dd"><summary title="what the colours, shapes and numbers mean · the keys">help <i class="arr"></i></summary><div class="menu">
     <h4>Mouse</h4>
     <dl>
-      <dt>keys</dt><dd><kbd>f</kbd> fit view (turn to the window and zoom to everything) · <kbd>F</kbd> fit without turning · <kbd>r</kbd> re-layout · <kbd>/</kbd> find · <kbd>Esc</kbd> close card, menu or selection · <kbd>Ctrl</kbd>-<kbd>A</kbd> select all shown</dd>
+      <dt>keys</dt><dd><table class="keys">
+        <tr><td><kbd>f</kbd></td><td>fit view: turn the map to the window and zoom to everything drawn</td></tr>
+        <tr><td><kbd>F</kbd></td><td>fit view without turning</td></tr>
+        <tr><td><kbd>r</kbd></td><td>re-layout, forces fading in</td></tr>
+        <tr><td><kbd>/</kbd></td><td>jump to the find box</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>close the card, an open menu, or the selection, in that order</td></tr>
+        <tr><td><kbd>Ctrl</kbd>-<kbd>A</kbd></td><td>select every node shown; again: none · <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears</td></tr>
+      </table>Home Assistant's own keys keep working here (e.g. <kbd>e</kbd>, <kbd>d</kbd>, <kbd>c</kbd>, <kbd>?</kbd>)</dd>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
       <dt><kbd>Ctrl</kbd>-drag · middle-drag · two-finger twist</dt><dd>rotate the whole map (around the centre of the view, or between the fingers); positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
