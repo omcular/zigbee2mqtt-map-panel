@@ -204,20 +204,20 @@ const STYLE = `
 
 const BAR = `
   <ha-menu-button></ha-menu-button>
-  <span id="lq" title="show only links whose weaker direction is above this LQI · press or drag on the bar · far left: show all">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
-  <label>find <input type="text" id="find" placeholder="node name…"></label>
-  <button id="join" class="primary" title="let new devices join the network for 254 s (Zigbee2MQTT closes it again by itself); click again to close now · administrators only · a router's card offers 'permit join here' for joining through that router">permit join</button>
-  <details id="devs" class="dd"><summary>devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
-  <details id="opts" class="dd"><summary>options <i class="arr"></i></summary><div class="menu">
+  <span id="lq" title="show only router links whose weaker direction is above this LQI · press or drag on the bar · far left: show all · hidden links still hold the layout together, so moving the bar changes what you see, not where things sit · until you move it, it follows the &quot;connected&quot; mesh number (click a mesh number in the footer to follow that one)">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
+  <label title="highlight every node whose name contains the text; the devices list is filtered the same way · key: /">find <input type="text" id="find" placeholder="node name…"></label>
+  <button id="join" class="primary" title="let new devices join the network for 254 s (Zigbee2MQTT closes it again by itself); click again to close now · while open: every running countdown, and a dot circles each node the network is open through · a router's card offers 'permit join here' (and 'also here' while a join runs) for joining through that router · the new device appears at the edge and is selected once its interview succeeds · administrators only">permit join</button>
+  <details id="devs" class="dd"><summary title="every device, or the selected one with its neighbours and both LQI directions · sortable by the column heads · a name selects the node, Z2M / HA open the device there · key: d">devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
+  <details id="opts" class="dd"><summary title="what is shown, how it is laid out, when the integration scans · remembered in this browser (the scan settings are the integration's entities) · key: o">options <i class="arr"></i></summary><div class="menu">
     <h4>Show</h4>
     <div class="grp">
-    <label><input type="checkbox" id="showEnd"> end devices</label>
+    <label title="sensors, remotes, battery devices: one link each, to their parent router · hidden ones stay in the layout, so switching them on or off moves nothing"><input type="checkbox" id="showEnd"> end devices</label>
     <label title="a ghost is an address in some router's neighbour table that is not in Zigbee2MQTT's device list: a removed device whose entries have not aged out. The devices list still shows them"><input type="checkbox" id="showGhosts"> show ghost devices</label>
-    <label><input type="checkbox" id="showOne"> one-sided / stale links</label>
-    <label title="when a node is selected, also reveal its one-sided (dashed) links; links hidden by the hide slider are always revealed"><input type="checkbox" id="selOne"> one-sided / stale on selected node</label>
+    <label title="links only one side reported, or reported with LQI 0: usually a stale neighbour-table entry, drawn as a dashed grey hairline · they are not part of the mesh numbers"><input type="checkbox" id="showOne"> one-sided / stale links</label>
+    <label title="when a node is selected, also reveal its one-sided (dashed) links; links Min LQI hides are always revealed for the selected node"><input type="checkbox" id="selOne"> one-sided / stale on selected node</label>
     <label title="links where every reporting side calls the other a 'sibling'. Careful: with EmberZNet coordinators this is the normal relationship between routers, so turning it off hides most of the mesh"><input type="checkbox" id="showSib" checked> sibling links</label>
-    <label>show names for <select id="names"><option value="none">none</option><option value="routers" selected>routers only</option><option value="all">all devices</option></select></label>
-    <label><input type="checkbox" id="showLql"> LQI labels</label>
+    <label title="labels under the nodes · a hidden label still answers to find and shows in the card">show names for <select id="names"><option value="none">none</option><option value="routers" selected>routers only</option><option value="all">all devices</option></select></label>
+    <label title="a pill on every link with both values: what the left-hand node hears / what the right-hand node hears · pills that do not fit a short link are left out"><input type="checkbox" id="showLql"> LQI labels</label>
     <label title="the info box that appears while the mouse rests on a node or a link; off: only the card a click opens"><input type="checkbox" id="hoverTips" checked> hover popups</label>
     <label id="routesCtl" title="draw what the routing tables say: links that carry active routes thicker (the more routes, the thicker) with an arrow at the end the traffic goes to; a selected router shows its path to the coordinator extra thick. 0: off · higher: thickness grows faster with the number of routes. Needs a scan with &quot;routes on pull&quot;">routes <input type="range" id="showRoutes" min="0" max="3" value="0" step="0.1"> <span id="showRoutesV">off</span></label>
     <div id="routesNote" class="note"></div>
@@ -225,30 +225,30 @@ const BAR = `
     </div>
     <h4>Layout</h4>
     <div class="grp">
-    <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds)">node size <input type="range" id="imgsize" min="16" max="64" value="24" step="2"> <span id="imgsizeV">24</span></label>
+    <label title="size of the nodes: the device images, or the squares and dots when images are off (end devices get two thirds) · zoom scales the whole map, this only the nodes against the links and labels">node size <input type="range" id="imgsize" min="16" max="64" value="24" step="2"> <span id="imgsizeV">24</span></label>
     <label title="overall distance between nodes, relative to their size (zoom scales everything, this only the spacing)">spacing <input type="range" id="spring" min="0.3" max="2" value="0.5" step="0.05"> <span id="springV">0.5</span></label>
-    <label title="push nodes off links they are not part of (and bend those links away) · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
+    <label title="push nodes off drawn links they are not part of (and bend those links away); acts only within a small clearance around a link · 0: off">keep nodes off links <input type="range" id="avoid" min="0" max="2" value="1" step="0.1"> <span id="avoidV">1.0</span></label>
     <label title="how much a strong link is shorter than a weak one · 0: all links the same length · 1: weak links 2.5× longer than strong ones · 3: extreme">LQI contrast <input type="range" id="lqilen" min="0" max="3" value="1" step="0.05"> <span id="lqilenV">1.0</span></label>
     <label title="off: dragging only disentangles, the node floats again when released (hold Shift to pin anyway) · on: every dragged node stays where you drop it"><input type="checkbox" id="pinmode"> dragging pins nodes</label>
-    <div class="row"><button id="unpin">unpin all</button><button id="relayout">re-layout</button><button id="resetview" title="turn the map to the shape of the window and zoom so everything drawn is in view (Shift-click: zoom only, no turning) · key: f">fit view</button></div>
+    <div class="row"><button id="unpin" title="release every pinned node (yellow halo) so the physics places it again · double-click pins or unpins a single node">unpin all</button><button id="relayout" title="run the physics again from the current positions, forces fading in; pinned nodes stay · key: r">re-layout</button><button id="resetview" title="turn the map to the shape of the window and zoom so everything drawn is in view (Shift-click: zoom only, no turning) · key: f">fit view</button></div>
     </div>
     <h4>Scans</h4>
     <div class="grp">
-    <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> pull routes (may take very long)</label>
-    <label title="the integration scans on its own at this interval, whether anyone is looking or not (number entity &quot;Background scan interval&quot;). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.25"> h</label>
-    <label title="while this panel is open and visible it requests a scan at this interval (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
+    <label title="also read every router's routing table on a pull (one more request per router; much slower without the networkmap_fast extension) · ticking it turns the routes overlay on if it was off · the overlay slider appears here while this is on"><input type="checkbox" id="routes"> pull routes (may take very long)</label>
+    <label title="the integration scans on its own at this interval, whether anyone is looking or not; every scan is a sample for the mesh sensors (number entity &quot;Background scan interval&quot;; 0.25 h = 15 min). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.25"> h</label>
+    <label title="while this panel is open and visible it requests a scan at this interval; several open panels share one schedule (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
     <div id="schedNote" class="note"></div>
     </div>
     <h4>Panel</h4>
     <div class="grp">
     <label title="the scan button and status line at the top and these controls at the bottom, within thumb reach on a phone (menus then open upwards)"><input type="checkbox" id="swapBars"> controls at the bottom</label>
-    <div class="row"><button id="png">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept)">reset to defaults</button></div>
+    <div class="row"><button id="png" title="download the map as a picture at twice the screen resolution, with the current view and selection · device pictures are left out (browsers refuse to draw remote images into a file)">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept), lay the map out afresh and fit it to the window">reset to defaults</button></div>
     </div>
   </div></details>
-<details id="help" class="dd"><summary>help <i class="arr"></i></summary><div class="menu">
+<details id="help" class="dd"><summary title="what the colours, shapes and numbers mean · the keys · key: ?">help <i class="arr"></i></summary><div class="menu">
     <h4>Mouse</h4>
     <dl>
-      <dt>keys</dt><dd><kbd>f</kbd> fit view (turn to the window and zoom to everything) · <kbd>F</kbd> fit without turning · <kbd>r</kbd> re-layout · <kbd>/</kbd> find · <kbd>?</kbd> this help · <kbd>Esc</kbd> close card, menu or selection · <kbd>Ctrl</kbd>-<kbd>A</kbd> select all shown</dd>
+      <dt>keys</dt><dd><kbd>f</kbd> fit view (turn to the window and zoom to everything) · <kbd>F</kbd> fit without turning · <kbd>r</kbd> re-layout · <kbd>/</kbd> find · <kbd>o</kbd> options · <kbd>d</kbd> devices · <kbd>?</kbd> this help · <kbd>Esc</kbd> close card, menu or selection · <kbd>Ctrl</kbd>-<kbd>A</kbd> select all shown</dd>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
       <dt><kbd>Ctrl</kbd>-drag · middle-drag · two-finger twist</dt><dd>rotate the whole map (around the centre of the view, or between the fingers); positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
@@ -430,7 +430,8 @@ class ZigbeeMapPanel extends HTMLElement {
         if (k === 'f' || k === 'F') { this.fitView({ rotate: k === 'f' }); e.preventDefault(); return; }   // F: fit without turning
         if (k === 'r') { this.wake(0.8); e.preventDefault(); return; }
         if (k === '/') { this.$('find').focus(); this.$('find').select(); e.preventDefault(); return; }
-        if (k === '?') { this.$('help').open = !this.$('help').open; e.preventDefault(); return; }
+        const menu = { '?': 'help', 'o': 'opts', 'd': 'devs' }[k];   // the toggle listener closes the others and places the menu
+        if (menu) { const d = this.$(menu); d.open = !d.open; e.preventDefault(); return; }
       }
       if (typing || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
       e.preventDefault();
