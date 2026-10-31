@@ -207,7 +207,7 @@ const STYLE = `
 const BAR = `
   <ha-menu-button></ha-menu-button>
   <span id="lq" title="show only router links whose weaker direction is above this LQI · press or drag on the bar · far left: show all · hidden links still hold the layout together, so moving the bar changes what you see, not where things sit · until you move it, it follows the &quot;connected&quot; mesh number (click a mesh number in the footer to follow that one)">Min LQI <span class="grad" style="background:${LQ_GRADIENT}"><b class="mk"></b><i style="left:0">0</i><i style="left:${50 / 2.55}%">50</i><i style="left:${80 / 2.55}%">80</i><i style="left:100%">255</i></span><input type="range" id="hide" min="0" max="255" value="0" step="5" hidden><span id="hideV" hidden>off</span></span>
-  <label title="highlight every node whose name contains the text; the devices list is filtered the same way · key: /">find <input type="text" id="find" placeholder="node name…"></label>
+  <label title="highlight every node whose name contains the text; several terms separated by commas match any of them · the devices list is filtered the same way · key: /">find <input type="text" id="find" placeholder="name, name…"></label>
   <button id="join" class="primary" title="let new devices join the network for 254 s (Zigbee2MQTT closes it again by itself); click again to close now · while open: every running countdown, and a dot circles each node the network is open through · a router's card offers 'permit join here' (and 'also here' while a join runs) for joining through that router · the new device appears at the edge and is selected once its interview succeeds · administrators only">permit join</button>
   <details id="devs" class="dd"><summary title="every device, or the selected one with its neighbours and both LQI directions · sortable by the column heads · a name selects the node, Z2M / HA open the device there">devices <i class="arr"></i></summary><div class="menu" id="devMenu"></div></details>
   <details id="opts" class="dd"><summary title="what is shown, how it is laid out, when the integration scans · remembered in this browser (the scan settings are the integration's entities)">options <i class="arr"></i></summary><div class="menu">
@@ -288,7 +288,7 @@ const BAR = `
       <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "pull routes" also reads routing tables (slower, much slower on the first pull). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>computed by the integration after every scan and also exposed as two sensors (a history graph of them is the mesh's health over time). C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Hidden links still hold the layout together at a fraction of their pull, so moving the bar changes what you see, not where things sit; devices without any link at all are lined up along the bottom of the screen. Until you move it, it follows the "connected" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
-      <dt>find</dt><dd>highlights every node whose name contains the text</dd>
+      <dt>find</dt><dd>highlights every node whose name contains the text; comma-separated terms match any of them (e.g. &quot;keller, thermo&quot;)</dd>
       <dt>permit join</dt><dd>the toolbar button opens the network for new devices for 254 s and counts down; click again to close it early. "permit join here" on a router's card opens it through that router only (the newcomer then takes it as parent); while a join is open, every card shows the countdown; "also here" opens that router too (each router keeps its own 254 s; the button lists every running countdown, soonest first); a dot circles every node the network is open through, "stop" closes the network everywhere. A join opened from the Zigbee2MQTT frontend shows without the router names. Zigbee2MQTT closes the network by itself when the time is up. Administrators only</dd>
       <dt>pairing feed</dt><dd>a bubble over the map: joined → interviewing → paired (or failed) → the device appears on the map at once (parked at the edge until a scan wires it) and is selected, so its card offers the Z2M link for naming it; renames and removals in Zigbee2MQTT reach the map the same way, without a scan</dd>
       <dt>stored in this browser</dt><dd>node positions and pins, zoom and pan, every option, the hide slider and the last map, so a revisit looks like you left it. Other browsers and devices have their own. "re-layout" shakes the layout, "reset view" the zoom</dd>
@@ -818,6 +818,9 @@ class ZigbeeMapPanel extends HTMLElement {
     this.draw();
   }
   fitOnSettle() { const o = this._fitOnSettle; this._fitOnSettle = null; this.fitView(o); }   // the deferred fit after a fresh layout, once the simulation is mostly settled
+  // the find box: comma-separated terms, case-insensitive; a name matches when it contains any of them
+  findTerms() { return this.$('find').value.toLowerCase().split(',').map(t => t.trim()).filter(Boolean); }
+  nameMatches(n, terms) { const nm = n.name.toLowerCase(); return terms.some(t => nm.includes(t)); }
   // fit the drawn graph into the window: optionally turn it so its long axis follows the window's long axis (principal axis of
   // the node positions; pins and velocities turn with it, as with a manual rotation), then zoom and pan so the bounding box
   // of the drawn, undocked nodes fills the canvas with room for labels
@@ -1134,8 +1137,8 @@ class ZigbeeMapPanel extends HTMLElement {
   }
   applySel() {
     if (!this.data) return;
-    const q = this.$('find').value.trim().toLowerCase(), sel = this.selected;
-    const matches = q ? new Set(this.data.nodes.filter(n => n.name.toLowerCase().includes(q)).map(n => n.id)) : null;
+    const terms = this.findTerms(), sel = this.selected;
+    const matches = terms.length ? new Set(this.data.nodes.filter(n => this.nameMatches(n, terms)).map(n => n.id)) : null;
     const keep = new Set();
     if (sel) { for (const n of this.sel) keep.add(n.id); this.gl.selectAll('g.link').each(l => { if (this.sel.has(l.s)) keep.add(l.t.id); if (this.sel.has(l.t)) keep.add(l.s.id); }); }
     const path = sel && this.routesOn() && this.sel.size === 1 ? this.pathHome(sel) : null, onPath = new Set(path || []);
@@ -1203,7 +1206,7 @@ class ZigbeeMapPanel extends HTMLElement {
   fillDevices() {
     const box = this.$('devMenu'); if (!box) return;
     if (!this.data) { box.innerHTML = '<div class="muted">no map yet</div>'; return; }
-    const sel = this.selected, reg = this._reg || {}, z2m = this.z2mUrl, q = this.$('find').value.trim().toLowerCase();
+    const sel = this.selected, reg = this._reg || {}, z2m = this.z2mUrl, terms = this.findTerms();
     // zigbee-herdsman stamps the coordinator's lastSeen once, at start-up, and never on traffic: it is the Z2M start time
     const seen = n => !n.lastSeen ? (n.type === 'Coordinator' ? '' : '?') : n.type === 'Coordinator' ? `Z2M up ${ago(Date.now() - n.lastSeen).replace(' ago', '')}` : ago(Date.now() - n.lastSeen);
     const linksFor = n => this.devLinks(n);
@@ -1238,7 +1241,7 @@ class ZigbeeMapPanel extends HTMLElement {
         `<tr class="head sub">${th(`neighbours (${rows.length})`, 'name')}<th>links</th>${th('type', 'type')}${th(`LQI hears / is heard${multi ? ' · partner' : ''}`, 'lqi')}${th('last seen', 'seen')}</tr>` +
         rows.map(x => row(x.n, `<td class="lq">${x.cell}</td>`)).join('') + '</table>';
     } else {
-      const list = sortRows(this.data.nodes.filter(n => !q || n.name.toLowerCase().includes(q)).map(n => ({ n })), 'type');
+      const list = sortRows(this.data.nodes.filter(n => !terms.length || this.nameMatches(n, terms)).map(n => ({ n })), 'type');
       html = `<table><tr class="head">${th(`device (${list.length})`, 'name')}<th>links</th>${th('type', 'type')}${th('last seen', 'seen')}</tr>` + list.map(x => row(x.n)).join('') + '</table>';
     }
     if (!z2m) html += '<div class="muted">Zigbee2MQTT links: enter the frontend URL in the integration\'s options (⚙ top right)</div>';
