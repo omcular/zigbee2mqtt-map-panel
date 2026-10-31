@@ -7,6 +7,7 @@
 const VERSION = '2.2.0';
 console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
 const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan', permitJoin: 'zigbee2mqtt_map/permit_join' };
+const SETTLE_ALPHA = 0.06;   // a fresh layout counts as mostly settled below this simulation energy (about 1.7 s after a start at 0.5): the deferred fit happens then, not at full rest
 const RAMP_TICKS = 60;   // forces fade in over this many simulation ticks after a restart (about a second at 60 fps; see wake)
 const CHARGE_EXPONENT = 1.2;   // repulsion falls off as 1/distance^p: d3's own charge is p = 1 (a dense cluster pushes a lone node far away), 2 is inverse-square; strengths are normalised at CHARGE_REF px so the near field stays as it was
 const CHARGE_REF = 100;
@@ -742,8 +743,8 @@ class ZigbeeMapPanel extends HTMLElement {
     this.sim = d3.forceSimulation().force('link', d3.forceLink().id(d => d.id).distance(dist).strength(l => this.linkPull(l)))
       .force('charge', forceRepel(CHARGE_EXPONENT, CHARGE_REF).strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
-      .on('tick', () => { this.tickRamp(); this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); })
-      .on('end', () => { this.savePos(); if (this._fitOnSettle) { const o = this._fitOnSettle; this._fitOnSettle = null; this.fitView(o); } });
+      .on('tick', () => { this.tickRamp(); this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); if (this._fitOnSettle && this.sim.alpha() < SETTLE_ALPHA) this.fitOnSettle(); })
+      .on('end', () => { this.savePos(); if (this._fitOnSettle) this.fitOnSettle(); });
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
     const PREFS = ['swapBars', 'showRoutes', 'hoverTips', 'showGhosts', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
@@ -816,6 +817,7 @@ class ZigbeeMapPanel extends HTMLElement {
     }
     this.draw();
   }
+  fitOnSettle() { const o = this._fitOnSettle; this._fitOnSettle = null; this.fitView(o); }   // the deferred fit after a fresh layout, once the simulation is mostly settled
   // fit the drawn graph into the window: optionally turn it so its long axis follows the window's long axis (principal axis of
   // the node positions; pins and velocities turn with it, as with a manual rotation), then zoom and pan so the bounding box
   // of the drawn, undocked nodes fills the canvas with room for labels
