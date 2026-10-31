@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+## 2.2.0 – 2026-10-31
+
 - Permit join from the map: a toolbar button opens the network for 254 s with a countdown (click again to close), a router's card offers "permit join here" and, while a join runs, "also here" (each router keeps its own 254 s; the button lists the running countdowns), and a dot circles every node the network is open through. A pairing feed, a bubble over the map, follows the newcomer: joined → interviewing → paired or failed. Administrators only.
 - The map follows Zigbee2MQTT's device list without a scan: a renamed device gets its new name (an open card follows), a joined device appears at once (parked at the edge until a scan shows its links, selected after a successful interview), a removed device stays in grey with its links until the next scan.
 - Mesh-health sensors: "Mesh connected at LQI", "Mesh redundant at LQI" and "Mesh routers ignored" (routers with no two-sided link in the scan, i.e. a router that went dark; 0 when all is well, so it is the one to alert on). The integration computes them after every scan and the panel shows the same values. Attributes name the bottleneck link, the single point of failure, the cut-off routers and the routers that did not answer the scan. A history graph of the three is the mesh over time.

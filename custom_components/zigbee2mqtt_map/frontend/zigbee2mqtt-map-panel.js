@@ -4,7 +4,7 @@
  * integration's websocket events (status, map, progress, error) and asks for scans with one websocket command.
  * d3.v7.min.js is loaded from next to this file.
  */
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
 const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan', permitJoin: 'zigbee2mqtt_map/permit_join' };
 const JOIN_SECONDS = 254;   // Zigbee2MQTT's maximum; it closes the network itself when the time is up
