@@ -15,7 +15,7 @@ v=${1:?version, e.g. 2.0.1}; subject=${2:-}
 [[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a plain x.y.z version: $v" >&2; exit 2; }
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 run() { if [ $DRY = 1 ]; then printf '  (dry) %s\n' "$*"; else "$@"; fi; }
-confirm() { [ $YES = 1 ] && return 0; local a; read -r -p "$1 [y/N] " a; [[ $a == [yY]* ]]; }
+confirm() { [ $YES = 1 ] && return 0; local a; read -r -p "$1 [Y/n] " a; [[ -z $a || $a == [yY]* ]]; }   # Enter = yes
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 git fetch -q --tags origin   # releases made with gh create their tags on GitHub only
 branch=$(git rev-parse --abbrev-ref HEAD); [ "$branch" = main ] || { echo "on branch $branch, releases come from main" >&2; exit 1; }
