@@ -212,7 +212,7 @@ const BAR = `
   <details id="opts" class="dd"><summary title="what is shown, how it is laid out, when the integration scans · remembered in this browser (the scan settings are the integration's entities)">options <i class="arr"></i></summary><div class="menu">
     <h4>Show</h4>
     <div class="grp">
-    <label title="sensors, remotes, battery devices: one link each, to their parent router · hidden ones stay in the layout, so switching them on or off moves nothing · key: e"><input type="checkbox" id="showEnd"> end devices</label>
+    <label title="sensors, remotes, battery devices: one link each, to their parent router · hidden ones stay in the layout, so switching them on or off moves nothing · key: E (Shift-e)"><input type="checkbox" id="showEnd"> end devices</label>
     <label title="a ghost is an address in some router's neighbour table that is not in Zigbee2MQTT's device list: a removed device whose entries have not aged out. The devices list still shows them"><input type="checkbox" id="showGhosts"> show ghost devices</label>
     <label title="links only one side reported, or reported with LQI 0: usually a stale neighbour-table entry, drawn as a dashed grey hairline · they are not part of the mesh numbers"><input type="checkbox" id="showOne"> one-sided / stale links</label>
     <label title="when a node is selected, also reveal its one-sided (dashed) links; links Min LQI hides are always revealed for the selected node"><input type="checkbox" id="selOne"> one-sided / stale on selected node</label>
@@ -253,11 +253,11 @@ const BAR = `
         <tr><td><kbd>f</kbd></td><td>fit view: turn the map to the window and zoom to everything drawn</td></tr>
         <tr><td><kbd>F</kbd></td><td>fit view without turning</td></tr>
         <tr><td><kbd>r</kbd></td><td>re-layout, forces fading in</td></tr>
-        <tr><td><kbd>e</kbd></td><td>show or hide end devices</td></tr>
+        <tr><td><kbd>E</kbd></td><td>show or hide end devices (<kbd>Shift</kbd>-<kbd>e</kbd>; plain <kbd>e</kbd> is Home Assistant's entity search)</td></tr>
         <tr><td><kbd>/</kbd></td><td>jump to the find box</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>close the card, an open menu, or the selection, in that order</td></tr>
         <tr><td><kbd>Ctrl</kbd>-<kbd>A</kbd></td><td>select every node shown; again: none · <kbd>Ctrl</kbd>-<kbd>Shift</kbd>-<kbd>A</kbd> clears</td></tr>
-      </table>Home Assistant's own keys keep working here (e.g. <kbd>d</kbd>, <kbd>c</kbd>, <kbd>?</kbd>); <kbd>e</kbd> is taken by the panel</dd>
+      </table>Home Assistant's own keys keep working here (e.g. <kbd>e</kbd>, <kbd>d</kbd>, <kbd>c</kbd>, <kbd>?</kbd>)</dd>
       <dt>drag background · wheel</dt><dd>pan · zoom (<kbd>Ctrl</kbd>-wheel is left to the browser)</dd>
       <dt><kbd>Ctrl</kbd>-drag · middle-drag · two-finger twist</dt><dd>rotate the whole map (around the centre of the view, or between the fingers); positions and pins turn with it</dd>
       <dt>drag node</dt><dd>disentangle; the node floats again when released, a pinned node stays pinned where you drop it. <kbd>Shift</kbd>-drag pins it (or turn on "drag pins nodes" in options)</dd>
@@ -439,7 +439,7 @@ class ZigbeeMapPanel extends HTMLElement {
         const k = e.key;
         if (k === 'f' || k === 'F') { this.fitView({ rotate: k === 'f' }); e.preventDefault(); e.stopPropagation(); return; }   // F: fit without turning
         if (k === 'r') { this.wake(0.8); e.preventDefault(); e.stopPropagation(); return; }
-        if (k === 'e') { const c = this.$('showEnd'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); e.preventDefault(); e.stopPropagation(); return; }   // shadows Home Assistant's entity search on this panel
+        if (k === 'E') { const c = this.$('showEnd'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); e.preventDefault(); e.stopPropagation(); return; }   // Shift-e: plain e is Home Assistant's entity search
         if (k === '/') { this.$('find').focus(); this.$('find').select(); e.preventDefault(); e.stopPropagation(); return; }
       }
       if (typing || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
