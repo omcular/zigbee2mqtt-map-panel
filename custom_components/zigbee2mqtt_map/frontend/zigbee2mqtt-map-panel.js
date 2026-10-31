@@ -7,6 +7,8 @@
 const VERSION = '2.2.0';
 console.info(`%c zigbee2mqtt-map-panel %c v${VERSION} `, 'background:#f5a623;color:#000;font-weight:bold', 'background:#333;color:#fff');
 const WS = { subscribe: 'zigbee2mqtt_map/subscribe', scan: 'zigbee2mqtt_map/scan', permitJoin: 'zigbee2mqtt_map/permit_join' };
+const RAMP_TICKS = 60;   // forces fade in over this many simulation ticks after a restart (about a second at 60 fps; see wake)
+const FADED_PULL = 0.2;   // pull of a link hidden by Min LQI, relative to a shown one (0 = the old behaviour: hidden links left the layout)
 const JOIN_SECONDS = 254;   // Zigbee2MQTT's maximum; it closes the network itself when the time is up
 const mmss = ms => { const t = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
@@ -335,11 +337,13 @@ class ZigbeeMapPanel extends HTMLElement {
     const reg = this._panel?.config?._panel_custom?.module_url; let urlStale = false;
     if (reg) { try { const a = new URL(reg, location.href), b = new URL(import.meta.url); urlStale = a.pathname !== b.pathname || a.searchParams.get('v') !== b.searchParams.get('v'); } catch (e) {} }
     const verStale = this.S.version && this.S.version !== VERSION;
-    // a different integration version means new files on disk but Home Assistant not restarted since (HACS update without
-    // restart, or the other way round after a downgrade): no page reload fixes that, a restart does
-    this.$('staleMsg').textContent = verStale ? `Home Assistant runs version ${this.S.version} of the integration, this panel file is ${VERSION}: restart Home Assistant`
+    // a changed module URL: the server serves a newer panel file than this page runs, a reload gets it (whatever the versions
+    // say: after a release both differ, and the reload fixes both). The same URL with a different integration version means
+    // new files on disk but Home Assistant not restarted since (HACS update without restart, or a downgrade): only a restart helps
+    const needRestart = verStale && !urlStale;
+    this.$('staleMsg').textContent = needRestart ? `Home Assistant runs version ${this.S.version} of the integration, this panel file is ${VERSION}: restart Home Assistant`
       : 'the panel was updated on the server, this page still runs the old version';
-    this.$('reload').style.display = verStale ? 'none' : '';
+    this.$('reload').style.display = needRestart ? 'none' : '';
     this.$('stale').classList.toggle('show', !!(urlStale || verStale));
   }
   // panel config wins; otherwise the helper the package fills from the retained <base>/bridge/state message; last resort the Z2M default
@@ -685,10 +689,10 @@ class ZigbeeMapPanel extends HTMLElement {
     // k = 0: fixed lengths (210 / 60) · k = 1: 120..300 / 40..100 by LQI · linear in k, floored so strong links never collapse at high contrast
     const dist = l => { const k = this.lqilen, end = l.s.isEnd || l.t.isEnd; return Math.max(end ? 25 : 50, end ? ((60 - 20 * k) + 60 * k * (1 - q(l))) : ((210 - 90 * k) + 180 * k * (1 - q(l)))) * this.spring; };
     const charge = d => (d.isEnd ? -150 : -1100) * this.spring;
-    this.sim = d3.forceSimulation().force('link', d3.forceLink().id(d => d.id).distance(dist).strength(l => l.revealed ? 0 : l.oneSided ? 0.15 : 0.5))
+    this.sim = d3.forceSimulation().force('link', d3.forceLink().id(d => d.id).distance(dist).strength(l => this.linkPull(l)))
       .force('charge', d3.forceManyBody().strength(charge)).force('center', d3.forceCenter(400, 300)).force('collide', d3.forceCollide(d => d.isEnd ? 18 : 42))
       .force('avoid', forceAvoidLinks().strength(this.avoid).clearance(d => (d.isEnd ? 16 : 30) * Math.max(0.6, this.spring)))
-      .on('tick', () => { this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
+      .on('tick', () => { this.tickRamp(); this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); }).on('end', () => this.savePos());
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
     const PREFS = ['swapBars', 'showRoutes', 'hoverTips', 'showGhosts', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
@@ -700,7 +704,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('imgsize').oninput = () => { this.imgsize = +$('imgsize').value; $('imgsizeV').textContent = this.imgsize; this.applyImgSize(); this.draw(); };
     const savePrefs = () => { const o = {}; for (const id of PREFS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : +el.value; } lsSet(LS.prefs, o); };
     for (const id of PREFS) $(id).addEventListener($(id).type === 'checkbox' ? 'change' : 'input', savePrefs);
-    $('showEnd').onchange = () => this.render(); $('showGhosts').onchange = () => this.render();
+    $('showEnd').onchange = () => { this._filterOnly = true; this.render(); }; $('showGhosts').onchange = () => this.render();
     const routesLabel = () => { const v = +$('showRoutes').value; $('showRoutesV').textContent = v > 0 ? v.toFixed(1) : 'off'; };
     $('showRoutes').oninput = () => { routesLabel(); this.render(); }; routesLabel(); $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => { this.glq.selectAll('g.lql').style('display', $('showLql').checked ? null : 'none'); this.sizeLabels(); };
@@ -721,7 +725,7 @@ class ZigbeeMapPanel extends HTMLElement {
       g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
     });
     this.updLegendMk();
-    $('hide').oninput = e => { if (e.isTrusted) lsSet(LS.hideMode, 'manual'); $('hideV').textContent = hideLabel(+$('hide').value); this.updLegendMk(); this.render(); };
+    $('hide').oninput = e => { if (e.isTrusted) lsSet(LS.hideMode, 'manual'); $('hideV').textContent = hideLabel(+$('hide').value); this.updLegendMk(); this._filterOnly = true; this.render(); };
     $('spring').value = this.spring; $('springV').textContent = this.spring.toFixed(1);
     $('spring').oninput = () => { this.spring = +$('spring').value; $('springV').textContent = this.spring.toFixed(1); lsSet(LS.spring, this.spring); this.sim.force('link').distance(dist); this.sim.force('charge').strength(charge); this.sim.alpha(0.5).restart(); };
     $('avoid').value = this.avoid; $('avoidV').textContent = this.avoid.toFixed(1);
@@ -765,22 +769,32 @@ class ZigbeeMapPanel extends HTMLElement {
   visible() {
     const $ = this.$, se = $('showEnd').checked, so = $('showOne').checked, sr = $('selOne').checked, ss = $('showSib').checked, hv = +$('hide').value;
     const sg = $('showGhosts').checked;
-    const nodes = this.data.nodes.filter(n => (se || !n.isEnd) && (sg || n.type !== 'Unknown'));
-    const vis = new Set(nodes.map(n => n.id));
+    // end devices hidden from view stay in the physics (they keep their place and their parent's neighbourhood), so the
+    // toggle is a filter like Min LQI; ghosts are in or out of the layout with their switch
+    const physNodes = this.data.nodes.filter(n => sg || n.type !== 'Unknown');
+    const nodes = physNodes.filter(n => se || !n.isEnd);
+    const inPhys = new Set(physNodes.map(n => n.id)), vis = new Set(nodes.map(n => n.id));
+    for (const n of this.data.nodes) n._drawn = vis.has(n.id);
     const sel = this.selected;
-    const links = [];
+    const links = [], phys = [];
     for (const l of this.data.links) {
-      if (!vis.has(l.s.id) || !vis.has(l.t.id)) continue;
+      if (!inPhys.has(l.s.id) || !inPhys.has(l.t.id)) continue;
+      const kind = (so || !l.oneSided) && (ss || !l.sibling);
+      const shown = vis.has(l.s.id) && vis.has(l.t.id);   // both ends drawn   // the type filters (one-sided, sibling) decide what is part of the layout at all
       // Min LQI is a statement about the router mesh: end-device links (one direction by nature, often 40-60) are not filtered
-      const normal = (so || !l.oneSided) && (ss || !l.sibling) && (l.oneSided || l.endLink || hideOk(l.min, hv));
+      const normal = kind && (l.oneSided || l.endLink || hideOk(l.min, hv));
       l.revealed = !normal && !!sel && this.touchesSel(l) && (so || sr || !l.oneSided);   // shown only because of the selection: drawn, but no force
-      if (normal || l.revealed) links.push(l);
+      // Min LQI is a filter, not a layout: a link it hides stays in the physics at a fraction of its pull, so the slider never
+      // rewires the graph and nodes keep their places (and a node whose links all fall below the threshold is not parked)
+      l.faded = kind && !normal;
+      if (shown && (normal || l.revealed)) links.push(l);
+      if (kind) phys.push(l);
     }
-    return { nodes, links };
+    return { nodes, links, phys, physNodes };
   }
   render() {
     if (!this.data) return;
-    const { nodes, links } = this.visible(), self = this, byId = this.data.byId, $ = this.$;
+    const { nodes, links, phys, physNodes } = this.visible(), self = this, byId = this.data.byId, $ = this.$;
     const color = l => l.oneSided ? LQ.grey : lqColor(l.min);
     const width = l => this.linkWidth(l);
     const fmt = v => v == null ? '–' : v, key = l => l.s.id + '|' + l.t.id;
@@ -866,16 +880,17 @@ class ZigbeeMapPanel extends HTMLElement {
     this.gn.selectAll('g.node').classed('end', d => d.isEnd).classed('stale', d => d.stale).classed('removed', d => d.removed);
     this.markJoinOpen();
     this.applyImgSize(); this.applyNames();
-    const deg = {}; for (const l of links) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }
+    const deg = {}; for (const l of phys) { deg[l.s.id] = (deg[l.s.id] || 0) + 1; deg[l.t.id] = (deg[l.t.id] || 0) + 1; }   // parking: no link in the layout at all, whatever Min LQI says
     this._deg = deg;
     const cv = $('canvas'), cx = cv.clientWidth / 2, cy = cv.clientHeight / 2;
-    this.sim.nodes(nodes); this.sim.force('link').links(links); this.sim.force('avoid').links(links);
+    this.sim.nodes(physNodes); this.sim.force('link').links(phys); this.sim.force('avoid').links(links);   // physics: every link of the layout; clearance: only drawn links
     this.applyGravity();
-    for (const n of nodes) if (n.x == null) { n.x = cx + (Math.random() - 0.5) * 80; n.y = cy + (Math.random() - 0.5) * 80; }
+    for (const n of physNodes) if (n.x == null) { n.x = cx + (Math.random() - 0.5) * 80; n.y = cy + (Math.random() - 0.5) * 80; }
     if (!this.warm) { this.warm = true; this.sim.force('center', d3.forceCenter(cx, cy)); this.sim.alpha(1); for (let i = 0; i < 250; i++) this.sim.tick(); }
     if (this._selOnly) { for (const l of links) { l.source = l.s; l.target = l.t; } this.draw(); }   // selection: redraw in place, no physics
-    else this.sim.alpha(this._gentle ? 0.15 : 0.5).restart();
-    this._selOnly = false; this._gentle = false;
+    else if (this._filterOnly) this.wake(0.2);   // Min LQI: a gentle resettle, forces fading in (the wiring did not change, only what is drawn)
+    else this.wake(this._gentle ? 0.15 : 0.5);
+    this._selOnly = false; this._gentle = false; this._filterOnly = false;
     this.applySel();
   }
   // image, backing disc, label offset and collision radius follow the image-size slider
@@ -913,7 +928,7 @@ class ZigbeeMapPanel extends HTMLElement {
   dockParked() {
     if (!this.sim || !this._deg || !this.data) return;
     const cv = this.$('canvas'), W = cv.clientWidth, H = cv.clientHeight, deg = this._deg;
-    const parked = this.sim.nodes().filter(d => !deg[d.id]).sort((a, b) => Number(a.isEnd) - Number(b.isEnd) || a.name.localeCompare(b.name));
+    const parked = this.sim.nodes().filter(d => !deg[d.id] && d._drawn).sort((a, b) => Number(a.isEnd) - Number(b.isEnd) || a.name.localeCompare(b.name));
     const t = this._zoomT || d3.zoomIdentity;
     const perRow = Math.max(1, Math.floor((W - 24) / 64)), rows = Math.ceil(parked.length / perRow);
     parked.forEach((d, i) => {
@@ -941,6 +956,27 @@ class ZigbeeMapPanel extends HTMLElement {
   // 'manual' (bar dragged) · 'connected' / 'redundant' (mesh number clicked: re-applied on every new map) · null: automatic = redundant
   hideMode() { const m = lsGet(LS.hideMode, null); return m || (lsGet(LS.hideSet, false) ? 'manual' : null); }
   // auto: applied by the panel on a new map (no render here, the caller renders) · otherwise a click on a mesh number
+  // a restart whose forces fade in over RAMP_MS: the first ticks move nodes gently instead of yanking them into the new
+  // wiring (the link pull and "keep nodes off links" start near zero and reach their set values at the end of the ramp)
+  // Only links whose pull CHANGED ramp: one the slider just revealed goes from its hidden fifth to full over RAMP_TICKS, one
+  // just hidden goes the other way, a new link on a fresh map starts near zero; every other link keeps its pull, so nothing
+  // it holds moves. (Ramping all links let the repulsion win for half a second: the whole graph swelled and shrank back.)
+  linkPull(l) {
+    const base = l.oneSided ? 0.15 : 0.5, k1 = l.faded ? FADED_PULL : 1;
+    const r = this._ramp ? 1 - this._ramp / RAMP_TICKS : 1, k0 = l._k0 ?? k1;
+    l._pull = k0 + (k1 - k0) * r;
+    return base * l._pull;
+  }
+  wake(alpha) {
+    for (const l of this.sim.force('link').links()) l._k0 = l._pull ?? 0.1;   // where each link's pull starts: its current value, new links near zero
+    this._ramp = RAMP_TICKS; this.tickRamp(true); this.sim.alpha(alpha).restart();
+  }
+  tickRamp(start = false) {   // counted in ticks, not time: a throttled tab still ramps
+    if (!this._ramp) return;
+    if (!start) this._ramp--;
+    this.sim.force('avoid').strength(this.avoid * (1 - this._ramp / RAMP_TICKS));
+    this.sim.force('link').strength(this.sim.force('link').strength());   // d3 caches strengths: re-set so linkPull() is read again
+  }
   setMinLqi(v, auto = false, mode = null) { const h = this.$('hide'); h.value = Math.max(0, Math.floor((v - 1) / 5) * 5);
     const note = mode ? ` (follows ${mode})` : ' (automatic: the redundant threshold)';
     if (auto) { this.$('hideV').textContent = hideLabel(+h.value) + note; this.updLegendMk?.(); return; }
