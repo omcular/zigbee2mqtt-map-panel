@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+## 2.3.0 – 2026-10-31
+
 - Min LQI and the end-device switch are filters, not layouts: links hidden by the slider stay in the physics at a fifth of their pull, hidden end devices stay in it entirely, nothing is parked by the slider, and a slider move wakes the simulation gently with only the changed links ramping their pull over a second. The arrangement you untangled survives slider drags; it still adjusts, it no longer rearranges.
 - Fixed: every wake of the physics turned the whole map a little (about 3° per re-layout). d3's link and collision forces split their push unevenly between the two nodes of a pair, which adds up to a net torque; the panel now uses its own link, collision and repulsion forces with equal and opposite pushes.
 - Node repulsion falls off as 1/distance^1.5 instead of 1/distance (normalised at 100 px): clusters keep their spread, a lone node is no longer pushed across the map by a dense cluster elsewhere.
