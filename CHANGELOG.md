@@ -6,6 +6,7 @@ section and uses it as the GitHub release notes.
 ## Unreleased
 
 - Mesh-health sensors: "Mesh connected at LQI", "Mesh redundant at LQI" and "Mesh routers ignored" (routers with no two-sided link in the scan, a router that went dark; 0 when all is well), computed by the integration after every scan (one implementation, the panel shows the same values), with the bottleneck, the single point of failure and the cut-off routers as attributes. A history graph of them is the mesh over time.
+- Background scan interval in steps of 0.25 h (15 min) instead of 0.5 h, for the mesh sensors' history.
 - Fixed: a node that had been parked at the edge (no links yet) came back pinned, on the parking row, once a later map gave it links. Parked and pinned are kept apart across map events now; such a stray pin is cleared by double-clicking the node.
 - The pairing feed is a bubble over the map instead of a line in the footer (which squeezed the status text on a phone); an open device card follows a rename and closes when the device is removed.
 - The join indicator (the dot circling a node) skips routers that joined after a broadcast permit join started, since the broadcast never reached them.

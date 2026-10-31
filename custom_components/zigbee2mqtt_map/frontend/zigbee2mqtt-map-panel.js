@@ -231,7 +231,7 @@ const BAR = `
     <h4>Scans</h4>
     <div class="grp">
     <label title="also read every router's routing table on a pull (one more request per router, slower)"><input type="checkbox" id="routes"> pull routes (may take very long)</label>
-    <label title="the integration scans on its own at this interval, whether anyone is looking or not (number entity &quot;Background scan interval&quot;). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.5"> h</label>
+    <label title="the integration scans on its own at this interval, whether anyone is looking or not (number entity &quot;Background scan interval&quot;). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.25"> h</label>
     <label title="while this panel is open and visible it requests a scan at this interval (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
     <div id="schedNote" class="note"></div>
     </div>
