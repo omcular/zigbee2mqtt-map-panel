@@ -90,7 +90,7 @@ const STYLE = `
   #wrap.swap details.dd .menu { top:auto; bottom:calc(100% + 4px); }   /* controls at the bottom: menus open upwards */
   #bar { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--divider-color,#333); }
   #bar label { display:flex; gap:5px; align-items:center; white-space:nowrap; }
-  #bar input[type=text] { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 6px; width:150px; }
+  #bar input[type=text] { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 6px; width:190px; max-width:45vw; }
   #bar input[type=range] { width:90px; }
   #lq { display:flex; align-items:center; white-space:nowrap; padding-top:4px; }
   #bar button, #foot button { background:var(--bgc); color:inherit; border:1px solid var(--divider-color,#444); border-radius:4px; padding:3px 8px; cursor:pointer; }
