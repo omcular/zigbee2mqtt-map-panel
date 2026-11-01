@@ -3,3 +3,7 @@
 *~
 __pycache__/
 .pytest_cache/
+# local session tooling, never published
+.claude/
+CLAUDE.local.md
+tools/harness/
