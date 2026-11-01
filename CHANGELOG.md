@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- "save PNG" includes the device pictures. An SVG drawn into a canvas loads no remote files, so each shown picture is fetched from zigbee2mqtt.io (which allows cross-origin reads) and embedded before the drawing; a picture that does not arrive within 8 s is left out as a plain shape. The button is greyed while the export runs. Before, the export dropped the pictures and, with pictures on, the shapes beneath them too: nodes came out as labels over nothing.
+
 ## 2.3.0 – 2026-10-31
 
 - Min LQI and the end-device switch are filters, not layouts: links hidden by the slider stay in the physics at a fifth of their pull, hidden end devices stay in it entirely, nothing is parked by the slider, and a slider move wakes the simulation gently with only the changed links ramping their pull over a second. The arrangement you untangled survives slider drags; it still adjusts, it no longer rearranges.

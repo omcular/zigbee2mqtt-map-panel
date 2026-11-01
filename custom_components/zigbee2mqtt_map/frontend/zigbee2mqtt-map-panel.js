@@ -30,6 +30,11 @@ function loadD3() {
 const hideOk = (lq, v) => v > 0 ? lq > v : true;
 const hideLabel = v => v > 0 ? `> ${v}` : 'off';
 const imgUrl = m => m ? `https://www.zigbee2mqtt.io/images/devices/${String(m).replace(/[/:\s]/g, '-')}.png` : null;
+// a picture as a data URL, for the PNG export: zigbee2mqtt.io allows cross-origin reads, so the browser may hand the bytes over
+const fetchDataUrl = async url => {
+  const r = await fetch(url, { mode: 'cors', signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const b = await r.blob(); return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(b); });
+};
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const ago = ms => ms < 60e3 ? 'just now' : ms < 3600e3 ? `${Math.round(ms / 60e3)} min ago` : ms < 86400e3 ? `${(ms / 3600e3).toFixed(1)} h ago` : `${(ms / 86400e3).toFixed(1)} d ago`;
 const LQ = { red: '#e5484d', orange: '#f5a623', green: '#46c36a', green2: '#22d66f', grey: '#8a8f99' };
@@ -184,7 +189,7 @@ const STYLE = `
   .node.removed { filter:grayscale(1); opacity:.55; }
   .link.removed line.vis, .link.removed path.arr, .lql.removed { filter:grayscale(1); opacity:.45; }
   details#devs tr.removed td { color:var(--muted); } details#devs tr.removed td.name { text-decoration:line-through; }
-  #bar button#join.open { font-variant-numeric:tabular-nums; } #bar button#join:disabled { opacity:.6; cursor:default; }
+  #bar button#join.open { font-variant-numeric:tabular-nums; } #bar button#join:disabled { opacity:.6; cursor:default; } button#png:disabled { opacity:.6; cursor:default; }
   #toast { position:absolute; top:10px; left:50%; transform:translateX(-50%); max-width:min(90%, 420px); box-sizing:border-box; background:var(--panel); color:var(--primary-text-color,#dfe3ea); border:1px solid var(--primary-color,#03a9f4); border-radius:8px; padding:6px 12px; font-size:13px; box-shadow:0 4px 14px #0008; z-index:7; pointer-events:none; opacity:0; transition:opacity .25s; }
   #toast.show { opacity:1; } #toast.bad { border-color:var(--orange); color:var(--orange); }   /* the pairing feed: joined → interviewing → paired */
   .lql { pointer-events:none; }
@@ -245,7 +250,7 @@ const BAR = `
     <h4>Panel</h4>
     <div class="grp">
     <label title="the scan button and status line at the top and these controls at the bottom, within thumb reach on a phone (menus then open upwards)"><input type="checkbox" id="swapBars"> controls at the bottom</label>
-    <div class="row"><button id="png" title="download the map as a picture at twice the screen resolution, with the current view and selection · device pictures are left out (browsers refuse to draw remote images into a file)">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept), lay the map out afresh and fit it to the window">reset to defaults</button></div>
+    <div class="row"><button id="png" title="download the map as a picture at twice the screen resolution, with the current view and selection, device pictures included (fetched from zigbee2mqtt.io, so with internet)">save PNG</button><button id="resetall" title="forget every option, pin, position and the view in this browser (the last map is kept), lay the map out afresh and fit it to the window">reset to defaults</button></div>
     </div>
   </div></details>
 <details id="help" class="dd"><summary title="what the colours, shapes and numbers mean · the keys · key: h">help <i class="arr"></i></summary><div class="menu">
@@ -281,7 +286,7 @@ const BAR = `
       <dt>sibling links</dt><dd>both sides report the relationship "sibling". Unticking "sibling links" in options hides them, which leaves parent/child links only; on an EmberZNet network that is most of the mesh, so it is on by default. Clicking a node reveals all of its links</dd>
       <dt>link length</dt><dd>strong links short, weak links long ("LQI contrast" in options sets how much; "spacing" scales all distances)</dd>
       <dt>ghosts</dt><dd>an address in a router's neighbour table that Zigbee2MQTT does not know: a removed device whose entries have not aged out (always LQI 0). Hidden unless "show ghost devices" is on in options; the devices list keeps them, with the routers that still hold them on the card</dd>
-      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "device images" in options puts the zigbee2mqtt.io photo on each node, "node size" scales them, pictures or not (needs internet; the PNG export leaves them out) · grey node with grey links = removed from Zigbee2MQTT since the last scan (gone with the next scan) · a node parked at the edge without links = joined since the last scan, pull a map to see its links</dd>
+      <dt>shapes</dt><dd>yellow disc = coordinator · square = router · small dot = end device (hidden by default) · red dashed ring = not seen for more than 24 h · "device images" in options puts the zigbee2mqtt.io photo on each node, "node size" scales them, pictures or not (needs internet) · grey node with grey links = removed from Zigbee2MQTT since the last scan (gone with the next scan) · a node parked at the edge without links = joined since the last scan, pull a map to see its links</dd>
       <dt>what a link is</dt><dd>an entry in a router's neighbour table, not a live route. These tables hold ~16 entries and age in and out, so links come and go between scans; judge a path over several scans</dd>
     </dl>
     <h4>Data</h4>
@@ -1400,18 +1405,34 @@ class ZigbeeMapPanel extends HTMLElement {
     this.tip.style('left', left + 'px').style('top', top + 'px');
   }
   hideTip() { this._pinned = null; this._refill = null; this.tip.classed('pinned', false).style('display', 'none'); }
-  savePng() {
-    const svgEl = this.svg.node(), c = this.$('canvas'), w = c.clientWidth, h = c.clientHeight;
-    const cs = getComputedStyle(this), bg = cs.getPropertyValue('--primary-background-color').trim() || '#1c2027';
-    const vars = ['--red', '--orange', '--green', '--blue', '--yellow', '--bgc', '--muted', '--primary-text-color'].map(v => `${v}:${cs.getPropertyValue(v).trim()}`).join(';');
-    let xml = new XMLSerializer().serializeToString(svgEl).replace(/<image\b[^>]*\/>|<image\b[^>]*>.*?<\/image>/gs, '');   // remote images would taint the canvas
-    const css = STYLE.replace(/:host\s*{[^}]*}/, '').replace(/#\w+\s*{[^}]*}/g, '');
-    // the serializer adds xmlns itself in current browsers; a second one makes the XML invalid and the image never loads
-    xml = xml.replace('<svg', `<svg${/<svg[^>]*\sxmlns=/.test(xml) ? '' : ' xmlns="http://www.w3.org/2000/svg"'} width="${w}" height="${h}" style="${vars};background:${bg};font:13px system-ui,sans-serif"`).replace('>', `><style>${css}</style>`);
-    const img = new Image(), cv = document.createElement('canvas'); cv.width = w * 2; cv.height = h * 2;
-    img.onload = () => { const ctx = cv.getContext('2d'); ctx.fillStyle = bg; ctx.fillRect(0, 0, cv.width, cv.height); ctx.scale(2, 2); ctx.drawImage(img, 0, 0); const a = document.createElement('a'); a.download = `zigbee_map_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.png`; a.href = cv.toDataURL('image/png'); a.click(); };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+  async savePng() {
+    const btn = this.$('png'); if (btn.disabled) return; btn.disabled = true;
+    try {
+      const c = this.$('canvas'), w = c.clientWidth, h = c.clientHeight;
+      const cs = getComputedStyle(this), bg = cs.getPropertyValue('--primary-background-color').trim() || '#1c2027';
+      const vars = ['--red', '--orange', '--green', '--blue', '--yellow', '--bgc', '--muted', '--primary-text-color'].map(v => `${v}:${cs.getPropertyValue(v).trim()}`).join(';');
+      // an SVG drawn as a picture loads no remote files: every shown device picture is fetched and embedded as a data URL (kept for the next export);
+      // one that does not arrive is left out the way a picture that failed to load is in the panel (plain shape, label moved up)
+      const clone = this.svg.node().cloneNode(true); this._imgData ??= new Map();
+      await Promise.all([...clone.querySelectorAll('image.img')].map(async el => {
+        const url = el.getAttribute('href');
+        if (el.style.display !== 'none') {
+          try { if (!this._imgData.has(url)) this._imgData.set(url, fetchDataUrl(url)); el.setAttribute('href', await this._imgData.get(url)); return; }
+          catch (e) { this._imgData.delete(url); }
+        }
+        const g = el.parentNode; el.remove(); g.querySelector('circle.imgbg')?.remove(); g.classList.remove('hasimg'); g.querySelector('text')?.setAttribute('dy', g.classList.contains('end') ? 14 : 22);
+      }));
+      let xml = new XMLSerializer().serializeToString(clone);
+      const css = STYLE.replace(/:host\s*{[^}]*}/, '').replace(/#\w+\s*{[^}]*}/g, '');
+      // the serializer adds xmlns itself in current browsers; a second one makes the XML invalid and the image never loads
+      xml = xml.replace('<svg', `<svg${/<svg[^>]*\sxmlns=/.test(xml) ? '' : ' xmlns="http://www.w3.org/2000/svg"'} width="${w}" height="${h}" style="${vars};background:${bg};font:13px system-ui,sans-serif"`).replace('>', `><style>${css}</style>`);
+      const img = new Image(), cv = document.createElement('canvas'); cv.width = w * 2; cv.height = h * 2;
+      await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('the map picture did not render')); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml); });
+      const ctx = cv.getContext('2d'); ctx.fillStyle = bg; ctx.fillRect(0, 0, cv.width, cv.height); ctx.scale(2, 2); ctx.drawImage(img, 0, 0);
+      const a = document.createElement('a'); a.download = `zigbee_map_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.png`; a.href = cv.toDataURL('image/png'); a.click();
+    } finally { btn.disabled = false; }
   }
+
 }
 // HACS also loads this file as a dashboard resource under another URL; HA is a single-page app, so the element may already exist
 if (!customElements.get('zigbee-map-panel')) customElements.define('zigbee-map-panel', ZigbeeMapPanel);
