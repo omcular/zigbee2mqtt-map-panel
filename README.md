@@ -28,7 +28,7 @@ tell you at a glance how strong the router mesh is. Installed from HACS, set up 
   opens with the latest scan on any device, and a scan that finishes after you close the page is not lost.
 - **Scan while viewing** — while the panel is open it can re-scan at a second, shorter interval; nothing happens when
   nobody is looking. Several open panels share one schedule.
-- **Entities** — the scan intervals, a "Scan now" button, a "Last scan" timestamp sensor (with router, end-device
+- **Entities** — the scan intervals, a "Pull routes" switch (the panel's checkbox of the same name; routing tables on every scan, background ones too), a "Scan now" button, a "Last scan" timestamp sensor (with router, end-device
   and link counts) and three mesh sensors, "Mesh connected at LQI", "Mesh redundant at LQI" and "Mesh routers ignored", belong to a
   device "Zigbee2MQTT map". The mesh sensors get a value with every scan, so their history is the health of your mesh
   over time. "Mesh routers ignored" counts the routers that had no two-sided link in the scan, so a router that went

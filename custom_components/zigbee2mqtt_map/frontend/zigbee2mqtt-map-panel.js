@@ -15,7 +15,7 @@ const CHARGE_REF = 100;
 const FADED_PULL = 0.2;   // pull of a link hidden by Min LQI, relative to a shown one (0 = the old behaviour: hidden links left the layout)
 const JOIN_SECONDS = 254;   // Zigbee2MQTT's maximum; it closes the network itself when the time is up
 const mmss = ms => { const t = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
-const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel' };   // setting names as the integration stores them
+const SET = { bg: 'background_hours', live: 'viewing_minutes', parallel: 'parallel', routes: 'routes' };   // setting names as the integration stores them
 const BASE = new URL('.', import.meta.url).href;
 const REL = { 0: 'parent', 1: 'child', 2: 'sibling', 3: 'none', 4: 'previous child' };
 const LS = { map: 'z2m_panel_map_v1', pos: 'z2m_map_positions_v2', view: 'z2m_map_view_v1', spring: 'z2m_map_spring', lqilen: 'z2m_map_lqilen', pin: 'z2m_map_pin', prefs: 'z2m_map_prefs_v1', sel: 'z2m_map_sel_v1', avoid: 'z2m_map_avoid', devSort: 'z2m_map_devsort_v1', hideSet: 'z2m_map_hide_user', hideMode: 'z2m_map_hide_mode' };
@@ -242,7 +242,7 @@ const BAR = `
     </div>
     <h4>Scans</h4>
     <div class="grp">
-    <label title="also read every router's routing table on a pull (one more request per router; much slower without the networkmap_fast extension) · ticking it turns the routes overlay on if it was off · the overlay slider appears here while this is on"><input type="checkbox" id="routes"> pull routes (may take very long)</label>
+    <label title="also read every router's routing table on every scan, background and button scans included: a setting of the integration (switch 'Pull routes'), the same for every viewer · one more request per router, much slower without the networkmap_fast extension · ticking it turns the routes overlay on if it was off · the overlay slider appears here while this is on"><input type="checkbox" id="routes"> pull routes (may take very long)</label>
     <label title="the integration scans on its own at this interval, whether anyone is looking or not; every scan is a sample for the mesh sensors (number entity &quot;Background scan interval&quot;; 0.25 h = 15 min). 0 = off">background scan every <input type="number" id="bgInt" min="0" max="24" step="0.25"> h</label>
     <label title="while this panel is open and visible it requests a scan at this interval; several open panels share one schedule (number entity &quot;Scan interval while viewing&quot;). 0 = off">scan while viewing every <input type="number" id="liveInt" min="0" max="60" step="1"> min</label>
     <div id="schedNote" class="note"></div>
@@ -294,7 +294,7 @@ const BAR = `
       <dt>background scan</dt><dd>the integration asks Zigbee2MQTT for the map at the interval set in options and keeps the answer, so the panel opens with the latest scan and updates itself when a scan finishes. The same three settings exist as entities of the "Zigbee2MQTT map" device, usable in automations</dd>
       <dt>scan while viewing</dt><dd>while this panel is open and visible it requests a scan at the second interval in options. Several open panels share one schedule: the integration runs one scan at a time and remembers the last request</dd>
       <dt>Z2M topic</dt><dd>the Zigbee2MQTT base topic the integration talks to, found on the broker when it was set up. Change it under Settings → Devices &amp; services → Zigbee2MQTT map → Configure (several instances: pick one there)</dd>
-      <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "pull routes" also reads routing tables (slower, much slower on the first pull). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
+      <dt>⤓ button (before the status text)</dt><dd>starts a scan now; leaving the page is fine, the result is kept. "pull routes" (options) also reads routing tables, on background scans too; it is a setting of the integration, shared by every viewer (slower, much slower on the first pull). Zigbee2MQTT scans one router after another (a 25-router mesh takes about 75 s); the <a href="https://github.com/omcular/zigbee2mqtt-map-panel#faster-scans-optional" target="_blank" rel="noopener">networkmap_fast extension</a> scans two at a time, puts dead routers last and reports progress here (16–22 s for the same mesh)</dd>
       <dt>mesh: connected ≥ C, redundant ≥ R</dt><dd>computed by the integration after every scan and also exposed as two sensors (a history graph of them is the mesh's health over time). C = highest LQI threshold at which every router still reaches the coordinator; R = highest threshold at which no single router is a point of failure. Weaker direction of each two-sided router link; routers without such a link are ignored. Hover for the limiting link or router, click to set Min LQI there</dd>
       <dt>Min LQI</dt><dd>the colour bar in the toolbar: press or drag on it. Shows only router links whose weaker direction is above the chosen LQI (the white marker); end-device links are never filtered; far left shows all. Hidden links still hold the layout together at a fraction of their pull, so moving the bar changes what you see, not where things sit; devices without any link at all are lined up along the bottom of the screen. Until you move it, it follows the "connected" threshold: the mesh first, marginal links on demand. Clicking "connected" or "redundant" in the status line sets it to that level and keeps following it on every new map; dragging the bar makes it a fixed value. Bad links are easiest found by colour with the slider at off</dd>
       <dt>find</dt><dd>highlights every node whose name contains the text; comma-separated terms match any of them (e.g. &quot;keller, thermo&quot;)</dd>
@@ -561,6 +561,8 @@ class ZigbeeMapPanel extends HTMLElement {
     if (!this.$ || !this.$('bgInt')) return;
     const bg = this.setting(SET.bg), live = this.setting(SET.live), have = !!this._status;
     for (const [id, v] of [['bgInt', bg], ['liveInt', live]]) { const el = this.$(id); if (this.shadowRoot.activeElement !== el) { el.value = v == null ? '' : v; el.disabled = !have; } }
+    const rt = this.$('routes'), on = !!this.S.settings?.[SET.routes]; rt.disabled = !have || !this.E.routes;   // no entity: an older integration, the banner says so
+    if (rt.checked !== on) { rt.checked = on; this._syncRoutesCtl?.(); }
     this.$('schedNote').textContent = !have ? 'waiting for the Zigbee2MQTT map integration…' :
       (bg > 0 ? `background: every ${bg} h` : 'background: off') + ' · ' + (live > 0 ? `viewing: every ${live} min` : 'viewing: off') + (this.fast ? ' · networkmap_fast topic' : '') + ` · Z2M topic: ${this.baseTopic}`;
   }
@@ -695,7 +697,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const h = this._hass; if (!h || this._scan) return;
     const st = this.$('status'); st.textContent = `requesting a scan on ${this.baseTopic}…`;
     try {
-      const r = await h.callWS({ type: WS.scan, routes: !!this.$('routes').checked });
+      const r = await h.callWS({ type: WS.scan });   // routes: the integration's own setting (the checkbox in options sets it)
       if (!r.started && !this._scan) st.textContent = 'a scan is already running';
     } catch (e) { this.endScan(); st.textContent = 'scan request failed: ' + (e.message || JSON.stringify(e)) + (e.code === 'unauthorized' ? ' (administrators only)' : ''); }
   }
@@ -818,7 +820,7 @@ class ZigbeeMapPanel extends HTMLElement {
       .on('tick', () => { this.tickRamp(); this.draw(); this.savePosSoon(); if ((this._tickN = (this._tickN || 0) + 1) % 30 === 0) this.applyGravity(); if (this._fitOnSettle && this.sim.alpha() < SETTLE_ALPHA) this.fitOnSettle(); })
       .on('end', () => { this.savePos(); if (this._fitOnSettle) this.fitOnSettle(); });
     // remembered controls (this browser): checkboxes and the hide slider; spacing / LQI contrast / pin mode have their own keys
-    const PREFS = ['swapBars', 'showRoutes', 'hoverTips', 'showGhosts', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'routes', 'hide', 'imgsize'];
+    const PREFS = ['swapBars', 'showRoutes', 'hoverTips', 'showGhosts', 'showEnd', 'showOne', 'selOne', 'showSib', 'showLql', 'names', 'showImg', 'hide', 'imgsize'];
     const prefs = lsGet(LS.prefs, {});
     if (!('names' in prefs) && 'showNames' in prefs) prefs.names = prefs.showNames ? 'all' : 'none';   // older stored prefs
     for (const id of PREFS) { const el = $(id); if (!(id in prefs)) continue; if (el.type === 'checkbox') el.checked = !!prefs[id]; else el.value = prefs[id]; }
@@ -832,7 +834,11 @@ class ZigbeeMapPanel extends HTMLElement {
     const routesLabel = () => { const v = +$('showRoutes').value; $('showRoutesV').textContent = v > 0 ? v.toFixed(1) : 'off'; };
     $('showRoutes').oninput = () => { routesLabel(); this.render(); }; routesLabel();
     const syncRoutesCtl = () => { $('routesCtl').style.display = $('routes').checked ? '' : 'none'; };   // the overlay slider only makes sense with routes in the scan
-    $('routes').addEventListener('change', () => { if ($('routes').checked && +$('showRoutes').value === 0) { $('showRoutes').value = 1; $('showRoutes').dispatchEvent(new Event('input')); } syncRoutesCtl(); });   // turning routes on with the overlay off: show them
+    $('routes').addEventListener('change', () => {   // a shared setting of the integration (switch entity), not a browser preference: every open panel follows
+      const on = $('routes').checked; if (on && +$('showRoutes').value === 0) { $('showRoutes').value = 1; $('showRoutes').dispatchEvent(new Event('input')); } syncRoutesCtl();   // turning routes on with the overlay off: show them
+      if (!this._hass || !this.E.routes) return;
+      this._hass.callService('switch', on ? 'turn_on' : 'turn_off', { entity_id: this.E.routes }).catch(e => { $('schedNote').textContent = 'could not set ' + this.E.routes + ': ' + (e.message || e); $('routes').checked = !!this.S.settings?.[SET.routes]; syncRoutesCtl(); });
+    });
     this._syncRoutesCtl = syncRoutesCtl; $('showOne').onchange = () => this.render(); $('showSib').onchange = () => this.render(); $('selOne').onchange = () => { if (this.selected) { this._selOnly = true; this.render(); } };
     $('showLql').onchange = () => { this.glq.selectAll('g.lql').style('display', $('showLql').checked ? null : 'none'); this.sizeLabels(); };
     $('names').onchange = () => this.applyNames();

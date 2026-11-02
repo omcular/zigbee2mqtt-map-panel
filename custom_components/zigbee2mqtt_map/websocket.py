@@ -44,7 +44,7 @@ def ws_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConnection
         forward(map_event)
 
 
-@websocket_api.websocket_command({vol.Required("type"): WS_SCAN, vol.Optional("routes", default=False): bool})
+@websocket_api.websocket_command({vol.Required("type"): WS_SCAN, vol.Optional("routes"): bool})  # routes: only an older panel file sends it
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_scan(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
@@ -52,7 +52,7 @@ async def ws_scan(hass: HomeAssistant, connection: websocket_api.ActiveConnectio
     if (coordinator := _coordinator(hass)) is None:
         connection.send_error(msg["id"], "not_ready", "the Zigbee2MQTT map integration is not set up")
         return
-    started = await coordinator.async_scan(routes=msg["routes"], source="panel")
+    started = await coordinator.async_scan(routes=msg.get("routes"), source="panel")
     connection.send_result(msg["id"], {"started": started, "scanning": coordinator.scanning})
 
 

@@ -5,6 +5,7 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+- "pull routes" is a setting of the integration (switch "Pull routes"), no longer a preference of one browser: the background schedule and the "Scan now" button read routing tables too, so a map pulled in the background keeps the routes overlay, and every open panel shows the same state. Before, only a pull from the panel carried routes; the next background scan replaced the map by one without them.
 - "save PNG" includes the device pictures. An SVG drawn into a canvas loads no remote files, so each shown picture is fetched from zigbee2mqtt.io (which allows cross-origin reads) and embedded before the drawing; a picture that does not arrive within 8 s is left out as a plain shape. The button is greyed while the export runs. Before, the export dropped the pictures and, with pictures on, the shapes beneath them too: nodes came out as labels over nothing.
 
 ## 2.3.0 – 2026-10-31

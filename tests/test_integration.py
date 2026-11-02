@@ -70,7 +70,8 @@ async def test_setup_creates_panel_and_entities(hass: HomeAssistant) -> None:
     ):
         assert hass.states.get(entity_id) is not None, entity_id
     assert hass.states.get("sensor.zigbee2mqtt_map_last_scan").state == "unknown"
-    # the networkmap_fast switch exists but is disabled by default
+    # "Pull routes" is a switch, off by default; the networkmap_fast switch exists but is disabled by default
+    assert hass.states.get("switch.zigbee2mqtt_map_pull_routes").state == "off"
     registry = er.async_get(hass)
     switch = registry.async_get("switch.zigbee2mqtt_map_use_the_networkmap_fast_topic")
     assert switch is not None and switch.disabled_by == er.RegistryEntryDisabler.INTEGRATION
@@ -88,7 +89,8 @@ async def test_scan_round_trip_and_websocket(hass: HomeAssistant, hass_ws_client
     assert status["entities"]["bg"] == "number.zigbee2mqtt_map_background_scan_interval"
     assert status["scanning"] is None
 
-    # a scan request publishes to Zigbee2MQTT and announces itself
+    # a scan request publishes to Zigbee2MQTT and announces itself; routes follow the "routes" setting (an older panel
+    # file may still send the field itself)
     await client.send_json({"id": 2, "type": WS_SCAN, "routes": True})
     msgs = [await client.receive_json() for _ in range(3)]
     result = next(m for m in msgs if m["id"] == 2 and m["type"] == "result")
@@ -127,12 +129,16 @@ async def test_scan_round_trip_and_websocket(hass: HomeAssistant, hass_ws_client
     assert (await client2.receive_json())["event"]["type"] == "status"
     assert (await client2.receive_json())["event"]["map"] == RAW_MAP
 
-    # settings through the entities reach the panel as a status event and change the request topic
+    # settings through the entities reach the panel as a status event and change the request topic and payload:
+    # the "Pull routes" switch (what the panel's checkbox sets) applies to the button and the schedule too
     await hass.data[DOMAIN][entry.entry_id].async_set_setting("parallel", True)
     ev = (await client.receive_json())["event"]
-    assert ev["type"] == "status" and ev["settings"]["parallel"] is True
+    assert ev["type"] == "status" and ev["settings"]["parallel"] is True and ev["settings"]["routes"] is False
+    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.zigbee2mqtt_map_pull_routes"}, blocking=True)
+    ev = (await client.receive_json())["event"]
+    assert ev["type"] == "status" and ev["settings"]["routes"] is True and ev["entities"]["routes"] == "switch.zigbee2mqtt_map_pull_routes"
     await hass.services.async_call("button", "press", {"entity_id": "button.zigbee2mqtt_map_scan_now"}, blocking=True)
-    assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/networkmap_fast", '{"type":"raw","routes":false}')
+    assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/networkmap_fast", '{"type":"raw","routes":true}')
     async_fire_mqtt_message(hass, "z2m/bridge/networkmap_fast/progress", json.dumps({"done": 2, "total": 5, "failed": 0}))
     await hass.async_block_till_done()
     evs = [(await client.receive_json())["event"] for _ in range(3)]
@@ -361,11 +367,13 @@ async def test_background_schedule(hass: HomeAssistant, mqtt, freezer) -> None:
     entry = await _setup(hass)
     coordinator = hass.data[DOMAIN][entry.entry_id]
     await coordinator.async_set_setting("background_hours", 1.0)
+    await coordinator.async_set_setting("routes", True)
     mqtt.async_publish.reset_mock()
     freezer.tick(timedelta(minutes=5))
     async_fire_time_changed(hass, dt_util.utcnow())
     await hass.async_block_till_done()
     assert mqtt.async_publish.call_count == 1  # never scanned before: due at once
+    assert mqtt.async_publish.call_args.args[:2] == ("z2m/bridge/request/networkmap", '{"type":"raw","routes":true}')  # the setting, not the panel
     async_fire_mqtt_message(hass, "z2m/bridge/response/networkmap", json.dumps({"status": "ok", "data": {"value": RAW_MAP}}))
     await hass.async_block_till_done()
     freezer.tick(timedelta(minutes=30))

@@ -50,6 +50,9 @@
       }
     },
     "switch": {
+      "routes": {
+        "name": "Pull routes"
+      },
       "parallel": {
         "name": "Use the networkmap_fast topic"
       }

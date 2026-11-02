@@ -35,7 +35,8 @@ DETECT_SECONDS = 3.0  # how long the config flow listens for retained <base>/bri
 SETTING_BACKGROUND_HOURS = "background_hours"
 SETTING_VIEWING_MINUTES = "viewing_minutes"
 SETTING_PARALLEL = "parallel"
-DEFAULT_SETTINGS = {SETTING_BACKGROUND_HOURS: 0.0, SETTING_VIEWING_MINUTES: 10, SETTING_PARALLEL: False}
+SETTING_ROUTES = "routes"  # also read every router's routing table, on every scan (panel, button, schedule)
+DEFAULT_SETTINGS = {SETTING_BACKGROUND_HOURS: 0.0, SETTING_VIEWING_MINUTES: 10, SETTING_PARALLEL: False, SETTING_ROUTES: False}
 
 WS_SUBSCRIBE = f"{DOMAIN}/subscribe"
 WS_SCAN = f"{DOMAIN}/scan"

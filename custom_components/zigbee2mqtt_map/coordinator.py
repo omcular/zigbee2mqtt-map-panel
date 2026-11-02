@@ -34,6 +34,7 @@ from .const import (
     SCHEDULE_SLACK,
     SETTING_BACKGROUND_HOURS,
     SETTING_PARALLEL,
+    SETTING_ROUTES,
     SETTING_VIEWING_MINUTES,
     STORE_KEY,
     STORE_VERSION,
@@ -154,10 +155,15 @@ class MapCoordinator:
         self._notify(self.status_event())
 
     # ---- scanning ------------------------------------------------------------------------------------------------
-    async def async_scan(self, *, routes: bool = False, source: str = "manual") -> bool:
-        """Ask Zigbee2MQTT for the raw map. Returns False when a scan is already running."""
+    async def async_scan(self, *, routes: bool | None = None, source: str = "manual") -> bool:
+        """Ask Zigbee2MQTT for the raw map. Returns False when a scan is already running.
+
+        routes: read the routing tables too; None (the schedule, the button, the panel) means the "routes" setting.
+        """
         if self.scanning:
             return False
+        if routes is None:
+            routes = bool(self.settings[SETTING_ROUTES])
         kind = SCAN_KIND_FAST if self.settings[SETTING_PARALLEL] else SCAN_KIND_NORMAL
         self.scanning = kind
         self.last_request = dt_util.utcnow()
