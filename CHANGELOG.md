@@ -5,6 +5,8 @@ section and uses it as the GitHub release notes.
 
 ## Unreleased
 
+## 2.4.0 – 2026-11-03
+
 - Security: values from the network map (route destinations and states, LQI readings) reached the tooltips and the devices list as HTML without escaping. A crafted map published on the broker, or a crafted device name, could run script in the browser of whoever opens the panel. Everything from the map is escaped now, and numbers are read as numbers. Found in the HACS review.
 - The Zigbee2MQTT link takes the frontend's URL only. The add-on sidebar path is no longer offered: it only worked through a Supervisor ingress session the panel created itself, which a panel must not do (HACS review). On Home Assistant OS or Supervised, enable the Zigbee2MQTT app's frontend port (Configuration → Network → "Show disabled ports" → 8099) and enter http://homeassistant:8099; the options dialog, the help and the README walk through it. A path that is still entered opens the app in its own page.
 - "pull routes" is a setting of the integration (switch "Pull routes"), no longer a preference of one browser: the background schedule and the "Scan now" button read routing tables too, so a map pulled in the background keeps the routes overlay, and every open panel shows the same state. Before, only a pull from the panel carried routes; the next background scan replaced the map by one without them.
