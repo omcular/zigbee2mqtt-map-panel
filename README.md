@@ -1,9 +1,7 @@
 # Zigbee2MQTT map
 
-> DRAFT written by the maintainer's assistant. Rewrite in your own words before publishing; keep the facts.
-
 [![release](https://img.shields.io/github/v/release/omcular/zigbee2mqtt-map-panel?label=release)](https://github.com/omcular/zigbee2mqtt-map-panel/releases)
-[![HACS](https://img.shields.io/badge/HACS-custom-orange)](https://hacs.xyz)
+[![HACS](https://img.shields.io/badge/HACS-default-41BDF5)](https://hacs.xyz)
 [![validate](https://github.com/omcular/zigbee2mqtt-map-panel/actions/workflows/validate.yml/badge.svg)](https://github.com/omcular/zigbee2mqtt-map-panel/actions/workflows/validate.yml)
 [![tests](https://github.com/omcular/zigbee2mqtt-map-panel/actions/workflows/tests.yml/badge.svg)](https://github.com/omcular/zigbee2mqtt-map-panel/actions/workflows/tests.yml)
 [![licence](https://img.shields.io/github/license/omcular/zigbee2mqtt-map-panel)](LICENSE)
@@ -67,17 +65,16 @@ over Home Assistant's websocket. The only thing that leaves your network is the 
 
 ## Install
 
-Not in the HACS default store yet, so it is added as a custom repository. This button does that for you (it opens your
-own Home Assistant through [My Home Assistant](https://my.home-assistant.io)):
+1. In HACS, search for **Zigbee2MQTT map** and **Download**. Restart Home Assistant when HACS asks.
 
-[![Open your Home Assistant instance and open the repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=omcular&repository=zigbee2mqtt-map-panel&category=integration)
+   If HACS does not list it yet, add it as a custom repository: this button does that for you (it opens your own Home
+   Assistant through [My Home Assistant](https://my.home-assistant.io)):
 
-Or by hand: HACS → three-dot menu (top right) → **Custom repositories** → paste
-`https://github.com/omcular/zigbee2mqtt-map-panel`, type **Integration**, Add.
+   [![Open your Home Assistant instance and open the repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=omcular&repository=zigbee2mqtt-map-panel&category=integration)
 
-Then, either way:
+   or by hand: HACS → three-dot menu (top right) → **Custom repositories** → paste
+   `https://github.com/omcular/zigbee2mqtt-map-panel`, type **Integration**, Add. Then download it as above.
 
-1. In HACS, open **Zigbee2MQTT map** and **Download**. Restart Home Assistant when HACS asks.
 2. Add the integration:
 
    [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=zigbee2mqtt_map)
@@ -86,9 +83,13 @@ Then, either way:
    instances found on your broker and pre-fills the base topic; confirm it.
 3. "Zigbee map" appears in the sidebar. Open it, press the **⤓** button (scan now, next to the status text), then set the two intervals in **options**
    (2 h background / 10 min while viewing is a sensible start). The **devices ▾** list links every device to its
-   Home Assistant device page; for links into the Zigbee2MQTT frontend, enter its URL in the integration's options
-   (Settings → Devices & services → Zigbee2MQTT map → Configure). A scan of a 25-router mesh takes about 75 s with
-   Zigbee2MQTT's own sequential scan.
+   Home Assistant device page; for "Z2M" links (the device's page in Zigbee2MQTT, in a drawer over the map), enter the
+   address of the Zigbee2MQTT frontend in the integration's options (Settings → Devices & services → Zigbee2MQTT map →
+   Configure). **Home Assistant OS or Supervised:** the Zigbee2MQTT app's frontend port, e.g. `http://homeassistant:8099`,
+   off by default: [open the app](https://my.home-assistant.io/redirect/supervisor_addon/?addon=45df7312_zigbee2mqtt)
+   → Configuration → Network → "Show disabled ports" → 8099 next to the frontend port → Save → restart the app.
+   **Core or Container:** the address of your Zigbee2MQTT instance's frontend, e.g. `http://192.168.1.10:8080`.
+   A scan of a 25-router mesh takes about 75 s with Zigbee2MQTT's own sequential scan.
 
 Without HACS: copy `custom_components/zigbee2mqtt_map/` from a [release](https://github.com/omcular/zigbee2mqtt-map-panel/releases)
 into your `config/custom_components/` and restart.

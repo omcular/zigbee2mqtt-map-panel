@@ -32,7 +32,7 @@
           "base_topic": "The topic Zigbee2MQTT publishes under; found on the broker when the integration was set up.",
           "sidebar_title": "Name of the panel in the sidebar.",
           "require_admin": "Only administrators see the panel.",
-          "z2m_url": "Lets the panel open devices in Zigbee2MQTT. Add-on (HAOS, Supervised): the add-on's sidebar path, e.g. /45df7312_zigbee2mqtt (through its ingress, administrators only), or its frontend port once enabled, e.g. http://homeassistant:8099. Core or Container: the frontend's URL as your browser reaches it, e.g. http://192.168.1.10:8080, scheme included. HA on https with Zigbee2MQTT on plain http cannot be embedded; Ctrl-click then opens a tab."
+          "z2m_url": "Lets \"Z2M\" in the panel open a device's page in Zigbee2MQTT, in a drawer over the map.\n\nEnter the address of the **Zigbee2MQTT frontend** (not Home Assistant's) as your browser reaches it, with http:// or https://.\n\n**Home Assistant OS or Supervised:** the Zigbee2MQTT app's frontend port, e.g. http://homeassistant:8099. The port is off by default: [open the app](https://my.home-assistant.io/redirect/supervisor_addon/?addon=45df7312_zigbee2mqtt) → Configuration → Network → \"Show disabled ports\" → enter 8099 next to the frontend port → Save → restart the app.\n\n**Core or Container:** the address of your Zigbee2MQTT instance's frontend, e.g. http://192.168.1.10:8080.\n\nHome Assistant on https cannot embed a Zigbee2MQTT frontend on plain http; Ctrl-click then opens a tab."
         }
       }
     },

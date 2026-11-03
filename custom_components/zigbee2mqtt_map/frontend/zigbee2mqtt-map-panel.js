@@ -70,8 +70,11 @@ function wrapLabel(textEl, name, maxW) {
 // computes them after every scan (custom_components/zigbee2mqtt_map/mesh.py): one implementation, the sensors and the
 // footer can never disagree.
 
+// the map JSON comes over MQTT, from whoever can publish on the broker: numbers are read as numbers (anything else is null),
+// strings go through esc() wherever they are put into HTML
+const num = v => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(+v) ? +v : null;
 function mergeMap(map) {
-  const nodes = map.nodes.map(n => ({ id: n.ieeeAddr, name: n.friendlyName || n.ieeeAddr, type: n.type, nwk: n.networkAddress, lastSeen: n.lastSeen ?? null, failed: n.failed || [], removed: !!n.removed,
+  const nodes = map.nodes.map(n => ({ id: String(n.ieeeAddr), name: String(n.friendlyName || n.ieeeAddr), type: String(n.type), nwk: num(n.networkAddress), lastSeen: n.lastSeen ?? null, failed: n.failed || [], removed: !!n.removed,
     model: n.definition?.model ?? '', vendor: n.definition?.vendor ?? '', desc: n.definition?.description ?? '' }));
   const known = new Set(nodes.map(n => n.id));
   for (const l of map.links) for (const a of [l.sourceIeeeAddr, l.targetIeeeAddr]) if (!known.has(a)) { known.add(a); nodes.push({ id: a, name: a + ' (not in device list)', type: 'Unknown', nwk: null, lastSeen: null }); }
@@ -79,8 +82,8 @@ function mergeMap(map) {
   for (const l of map.links) {
     const [a, b] = [l.sourceIeeeAddr, l.targetIeeeAddr].sort();
     const p = pairs[a + '|' + b] ??= { source: a, target: b, hear: {}, rel: {}, routes: [] };
-    p.hear[l.targetIeeeAddr] = l.lqi; p.rel[l.targetIeeeAddr] = l.relationship;
-    if (l.routes?.length) p.routes.push(...l.routes.map(r => ({ via: l.targetIeeeAddr, to: r.destinationAddress, status: r.status })));
+    p.hear[l.targetIeeeAddr] = num(l.lqi); p.rel[l.targetIeeeAddr] = num(l.relationship);
+    if (l.routes?.length) p.routes.push(...l.routes.map(r => ({ via: l.targetIeeeAddr, to: num(r.destinationAddress), status: String(r.status ?? '') })));
   }
   const links = Object.values(pairs).map(p => ({ source: p.source, target: p.target, lqS: p.hear[p.source] ?? null, lqT: p.hear[p.target] ?? null, relS: p.rel[p.source] ?? null, relT: p.rel[p.target] ?? null, routes: p.routes }));
   return { nodes, links };
@@ -276,7 +279,7 @@ const BAR = `
       <dt>hover node / link</dt><dd>model, last seen, link count · both LQI directions, relationship, routes</dd>
       <dt>click / tap node: card</dt><dd>besides selecting the node, its card stays open with "Z2M" and "HA" links (as in the devices list). A click on the card, <kbd>Esc</kbd>, the background or another node closes it; clicking the selected node again brings it back</dd>
       <dt>routes</dt><dd>(slider in options) what the routing tables say, after a scan with "routes on pull": links carrying active routes are drawn thicker, the more routes the thicker, with an arrow at the end the traffic flows to; links without routes keep their width. The slider sets how strongly the number of routes shows, far left turns the overlay off. Select a router and its path to the coordinator is drawn extra thick; the node card names the hops. The routing tables hold where traffic actually goes, the neighbour tables only who hears whom</dd>
-      <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device in the Zigbee2MQTT frontend in a drawer over the map (Ctrl-click for a new tab): enter the frontend's URL as your browser reaches it in the integration's options, ⚙ top right (add-on: http://homeassistant:8099 once its frontend port is enabled; Core or Container: e.g. http://192.168.1.10:8080). On HAOS the add-on's sidebar path (/…_zigbee2mqtt) works too, through the add-on's ingress (administrators only), no port to expose. HA on https cannot embed a plain-http frontend; Ctrl-click opens a tab</dd>
+      <dt>devices ▾</dt><dd>the selected node with its neighbours and both LQI directions, or every device when nothing is selected (the "find" text filters it). Click a name to select it on the map, a column header to sort by it (again: reverse; LQI sorts by the weaker direction first). "HA" opens the device page in Home Assistant, "Z2M" the device's page in Zigbee2MQTT in a drawer over the map (Ctrl-click for a new tab): enter the address of the Zigbee2MQTT frontend (not Home Assistant's) as your browser reaches it in the integration's options, ⚙ top right. Home Assistant OS or Supervised: the Zigbee2MQTT app's frontend port, e.g. http://homeassistant:8099, off by default (Settings → Apps → Zigbee2MQTT → Configuration → Network → "Show disabled ports" → 8099 next to the frontend port → Save → restart the app). Core or Container: the address of your Zigbee2MQTT instance's frontend, e.g. http://192.168.1.10:8080. Home Assistant on https cannot embed a Zigbee2MQTT frontend on plain http; Ctrl-click opens a tab</dd>
       <dt>⚙</dt><dd>the integration's page in Home Assistant: options, entities, reload</dd>
     </dl>
     <h4>Reading the map</h4>
@@ -619,7 +622,7 @@ class ZigbeeMapPanel extends HTMLElement {
     scan.tick = setInterval(() => { st.textContent = `scan running (${kind})… ${Math.round((Date.now() - t0) / 1000)} s${scan.progress} (leaving the page is fine, the result is kept by Home Assistant)`; }, 1000);
   }
   endScan() { if (!this._scan) return; clearInterval(this._scan.tick); this._scan = null; this.$('pull').disabled = false; }
-  disconnectedCallback() { window.removeEventListener('keydown', this._onKey, true); clearInterval(this._liveT); this._liveT = null; clearInterval(this._joinT); this._joinT = null; clearTimeout(this._feedT); this._feedT = null; clearInterval(this._ingressT); this._ingressT = null; this._ingress = null; this.savePos(); this.saveView(); lsSet(LS.sel, [...this.sel].map(n => n.id)); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
+  disconnectedCallback() { window.removeEventListener('keydown', this._onKey, true); clearInterval(this._liveT); this._liveT = null; clearInterval(this._joinT); this._joinT = null; clearTimeout(this._feedT); this._feedT = null; this.savePos(); this.saveView(); lsSet(LS.sel, [...this.sel].map(n => n.id)); if (this._storeSub) { try { this._storeSub(); } catch (e) {} this._storeSub = null; } }
 
   // permit join: the request goes to Zigbee2MQTT through the integration; the countdown comes back in the status events
   // (permit_join_end from Zigbee2MQTT's bridge info), so a reload or a second browser shows the same clock
@@ -973,7 +976,7 @@ class ZigbeeMapPanel extends HTMLElement {
       const dirs = new Map();   // via ieee -> Map(dest label -> count)
       for (const r of l.routes) {
         const d = dirs.get(r.via) ?? new Map(); dirs.set(r.via, d);
-        const st = STATUS[r.status] ?? String(r.status).toLowerCase(), label = `${byNwk[r.to]?.name ?? `nwk ${r.to}`}${st ? ` <span class="muted">(${st})</span>` : ''}`;
+        const st = STATUS[r.status] ?? r.status.toLowerCase(), label = `${esc(byNwk[r.to]?.name ?? `nwk ${r.to}`)}${st ? ` <span class="muted">(${esc(st)})</span>` : ''}`;
         d.set(label, (d.get(label) || 0) + 1);
       }
       const rows = [];
@@ -996,7 +999,7 @@ class ZigbeeMapPanel extends HTMLElement {
     $('routesNote').textContent = ro && !this._hasRoutes ? 'this map has no routes: scan with "routes on pull"' : '';
     this._syncRoutesCtl?.();
     lm.select('line.hit')
-      .on('mouseenter', (e, l) => this._pinned || !$('hoverTips').checked || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${fmt(l.lqS)}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${fmt(l.lqT)}</span></div>` +
+      .on('mouseenter', (e, l) => this._pinned || !$('hoverTips').checked || this.showTip(e, `<div class="big"><span style="color:${lqColor(l.lqS)}">${esc(fmt(l.lqS))}</span> <span style="color:var(--muted)">/</span> <span style="color:${lqColor(l.lqT)}">${esc(fmt(l.lqT))}</span></div>` +
         esc(`${l.s.name}  ⟷  ${l.t.name}\n${l.s.name} hears ${l.t.name}: ${fmt(l.lqS)}  (${REL[l.relS] ?? '–'})\n${l.t.name} hears ${l.s.name}: ${fmt(l.lqT)}  (${REL[l.relT] ?? '–'})`) + (l.routes.length ? routesHtml(l) : ''), true))
       .on('mousemove', e => { if (!this._pinned) this.moveTip(e); }).on('mouseleave', () => { if (!this._pinned) this.hideTip(); });
     // LQI label: a pill in the link's colour with the two values, centred on the link and turned along it
@@ -1267,26 +1270,12 @@ class ZigbeeMapPanel extends HTMLElement {
   // Zigbee2MQTT's frontend in a drawer over the map (the map keeps running underneath); Ctrl/middle click still opens a tab
   openSide(url, title) { this.$('sideTitle').textContent = title; this.$('sideExt').href = url; const f = this.$('sideFrame'); if (f.src !== url) f.src = url; this.$('side').classList.add('show'); }
   closeSide() { this.$('side').classList.remove('show'); this.$('sideFrame').src = 'about:blank'; }
-  // the Zigbee2MQTT device page in the drawer. Frontend URL: directly. Add-on sidebar path: the same dance Home Assistant's own
-  // ingress view does (session cookie + the add-on's ingress url), which lets the drawer address the device page; needs an
-  // administrator (Supervisor API), otherwise it falls back to opening the add-on's page in place.
-  async openZ2m(n, href) {
+  // the Zigbee2MQTT device page: a frontend URL opens in the drawer over the map; the add-on's sidebar path is Home Assistant's
+  // own ingress view and opens in place (a panel does not create ingress sessions; the add-on view has no device deep link)
+  openZ2m(n, href) {
     if (!n) return;
-    const z2m = this.z2mUrl, title = n.name + ' · Zigbee2MQTT';
-    if (!z2m.startsWith('/')) { this.openSide(href, title); return; }
-    const slug = z2m.replace(/^\/+/, '').split('/')[0], h = this._hass;
-    try {
-      if (!this._ingress) {
-        const r = await h.callApi('POST', 'hassio/ingress/session'), session = (r?.data ?? r)?.session;
-        if (!session) throw new Error('no ingress session');
-        document.cookie = `ingress_session=${session};path=/api/hassio_ingress/;SameSite=Strict${location.protocol === 'https:' ? ';Secure' : ''}`;
-        const info = await h.callApi('GET', `hassio/addons/${slug}/info`), url = (info?.data ?? info)?.ingress_url;
-        if (!url) throw new Error('no ingress url');
-        this._ingress = { session, url: url.replace(/\/+$/, '') };
-        this._ingressT = setInterval(() => h.callApi('POST', 'hassio/ingress/validate_session', { session }).catch(() => {}), 60000);
-      }
-      this.openSide(`${this._ingress.url}/#/device/0/${encodeURIComponent(n.id)}`, title);
-    } catch (e) { this.navTo(z2m); }
+    const z2m = this.z2mUrl;
+    if (z2m.startsWith('/')) this.navTo(z2m); else this.openSide(href, n.name + ' · Zigbee2MQTT');
   }
   // ---- devices list: the selected node and its neighbours, or everything ----
   get z2mUrl() { return String(this._panel?.config?.z2m_url || '').trim().replace(/\/+$/, ''); }
@@ -1321,7 +1310,7 @@ class ZigbeeMapPanel extends HTMLElement {
     const th = (label, key) => !key ? `<th>${label}</th>` : `<th data-sort="${key}" class="${st.key === key ? 'sorted' : ''}" title="sort by ${key === 'seen' ? 'last seen' : key}; click again to reverse">${label}${st.key === key ? (st.dir > 0 ? ' ▾' : ' ▴') : ''}</th>`;
     let html;
     if (sel) {
-      const lq = v => v == null ? '–' : v, multi = this.sel.size > 1, short = n => n.name.length > 18 ? n.name.slice(0, 17) + '…' : n.name;
+      const lq = v => v == null ? '–' : esc(v), multi = this.sel.size > 1, short = n => n.name.length > 18 ? n.name.slice(0, 17) + '…' : n.name;
       // neighbours of every selected node, merged: one row per device; with several selected, the best link and its partner
       const nb = new Map();
       for (const s of this.sel) for (const l of this.data.links) {
@@ -1353,7 +1342,7 @@ class ZigbeeMapPanel extends HTMLElement {
   // the entries stay until the routers holding them rebuild their tables (Tuya devices keep the parent they joined through for good)
   ghostHtml(d) {
     if (d.type !== 'Unknown') return '';
-    const holders = this.data.links.filter(l => l.s === d || l.t === d).map(l => { const o = l.s === d ? l.t : l.s, lq = l.s === d ? l.lqT : l.lqS, rel = l.s === d ? l.relT : l.relS; return `${esc(o.name)} (${lq ?? '–'}${rel === 0 ? ', as its parent' : rel === 1 ? ', as its child' : ''})`; });
+    const holders = this.data.links.filter(l => l.s === d || l.t === d).map(l => { const o = l.s === d ? l.t : l.s, lq = l.s === d ? l.lqT : l.lqS, rel = l.s === d ? l.relT : l.relS; return `${esc(o.name)} (${esc(lq ?? '–')}${rel === 0 ? ', as its parent' : rel === 1 ? ', as its child' : ''})`; });
     return `<div class="path"><span class="muted">not in the device list: a removed device that is still in the neighbour table of</span> ${holders.join(', ')}<br><span class="muted">LQI 0 = nobody hears it. The entries go away when those routers rebuild their tables, usually after a power cycle</span></div>`;
   }
   pathHomeHtml(d) {
@@ -1369,9 +1358,9 @@ class ZigbeeMapPanel extends HTMLElement {
     // Z2M 2.x route: #/device/<source index>/<ieee>, source 0 = the first (only) instance. On a fresh load the frontend
     // honours exactly this form; with a tab suffix (/info) it falls back to the device list
     const z = !z2m || n.type === 'Unknown' ? '' : z2m.startsWith('/')
-      ? `<a href="${esc(z2m)}" data-side="${esc(n.id)}" title="open the device in the Zigbee2MQTT add-on, here over the map">Z2M</a>`
+      ? `<a href="${esc(z2m)}" data-side="${esc(n.id)}" title="open the Zigbee2MQTT add-on in its own page (the add-on cannot be shown over the map)">Z2M</a>`
       : `<a href="${esc(z2m)}/#/device/0/${encodeURIComponent(n.id)}" data-side="${esc(n.id)}" target="_blank" rel="noopener" title="open the device in the Zigbee2MQTT frontend, here over the map (Ctrl-click: new tab)">Z2M</a>`;
-    return z + (reg[n.id] ? `<a href="/config/devices/device/${reg[n.id]}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
+    return z + (reg[n.id] ? `<a href="/config/devices/device/${encodeURIComponent(reg[n.id])}" data-nav title="open the device page in Home Assistant">HA</a>` : '');
   }
   // "permit join here": open the network through this router (or the coordinator); while open that way, the countdown and a stop
   // join state, as the radios see it: Zigbee2MQTT keeps ONE timer (the latest request), but a request through a router is a
