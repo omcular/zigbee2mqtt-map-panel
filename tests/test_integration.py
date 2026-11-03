@@ -413,3 +413,22 @@ def test_version_in_sync() -> None:
     assert json.loads((d / "manifest.json").read_text())["version"] == VERSION
     js = (d / "frontend" / "zigbee2mqtt-map-panel.js").read_text()
     assert re.search(r"^const VERSION = '([0-9.]+)';", js, re.M).group(1) == VERSION
+
+
+def test_no_urls_in_translations() -> None:
+    """hassfest refuses URLs inside translation strings (use description placeholders): catch it before the release gate does."""
+    import json
+    import re
+    from pathlib import Path
+
+    # hassfest's RE_URL (script/hassfest/translations.py)
+    re_url = re.compile(r"(((ftp|ftps|scp|http|https|mqtt|mqtts|socket|socks5):\/\/|www\.)[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,5}(:[0-9]{1,5})?(\/.*)?)")
+    root = Path(__file__).parent.parent / "custom_components" / "zigbee2mqtt_map"
+    for file in (root / "strings.json", *(root / "translations").glob("*.json")):
+        def walk(value, path):
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    walk(item, f"{path}.{key}")
+            elif isinstance(value, str):
+                assert not re_url.search(value), f"{file.name}: URL in translation string at {path}"
+        walk(json.loads(file.read_text()), "")
